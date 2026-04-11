@@ -1,0 +1,14 @@
+
+RAR 3.00    Copyright (c) 1993-2002 Eugene Roshal    14 May 2002
+Shareware version         Type RAR -? for help
+
+Volume multivol_oldnaming_rar300.rar
+
+ Name             Size   Packed Ratio  Date   Time     Attr      CRC   Meth Ver
+               Host OS    Solid   Old
+-------------------------------------------------------------------------------
+ bigtext_64k.bin    65536     8118  --> 27-04-26 06:54   .....A   0CFB191C m3b 2.9
+              Win95/NT       No   No
+-------------------------------------------------------------------------------
+    1            65536     8118  12%
+

@@ -1,0 +1,29 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: dict_1m.rar
+Details: RAR 5
+
+        Name: bigtext_512k.bin
+        Type: File
+        Size: 524288
+ Packed size: 74736
+       Ratio: 14%
+       mtime: 2026-04-27 06:22:43,331943100
+  Attributes: ..A....
+      BLAKE2: d95d124331f5c3ee710f52e21190f29cf63020332c3c65f36ffb9ff0979cd451
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m3 -md=1M
+
+        Name: QO
+        Type: Service
+        Size: 92
+ Packed size: 92
+       Ratio: 100%
+  Attributes: .B
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+     Service: EOF
+

@@ -1,0 +1,20 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: multivol.part1.rar
+Details: RAR 5, volume 1
+
+        Name: random_4k.bin
+        Type: File
+        Size: 4096
+ Packed size: 1825
+       Ratio: -->
+       mtime: 2026-04-27 06:23:05,438475100
+  Attributes: ..A....
+ Pack-BLAKE2: b44a27c8b0ecb579b31530eb210596ccadc9b6d58b69819d66742ad5804ea67e
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m3 -md=128K
+
+     Service: EOF
+

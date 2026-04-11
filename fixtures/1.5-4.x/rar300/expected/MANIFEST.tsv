@@ -1,0 +1,9 @@
+encrypted_per_file_rar300.rar	124	Per-file AES-128 encryption (-p). Password-derived key+IV per RAR 3.x KDF (262144 SHA-1 iters with the _rar29 quirk; see ENCRYPTION §4).
+header_encrypted_rar300.rar	164	Whole-archive header encryption (-hp). MainHead has MHD_PASSWORD (0x0080); all blocks after the marker are AES-128-CBC encrypted with per-block IV16 prefix.
+with_comment_rar300.rar	175	Archive comment via -z. RAR 3.x stores it as HEAD3_NEWSUB (0x7a) with name 'CMT' or as inline HEAD3_CMT depending on encoder flags.
+with_recovery_rar300.rar	15552	10% recovery record. RAR 3.x emits HEAD3_NEWSUB 'RR' (NEWSUB_HEAD = 0x7a), not the older PROTECT_HEAD 0x78.
+multivol_oldnaming_rar300.rar	8192	Multi-volume (-v8k → 8 KB volumes), -vn forces OLD-style naming (.r00, .r01, …). MainHead carries MHD_VOLUME (0x0001) but NOT MHD_NEWNUMBERING.
+multivol_oldnaming_rar300.r00	1708	Multi-volume (-v8k → 8 KB volumes), -vn forces OLD-style naming (.r00, .r01, …). MainHead carries MHD_VOLUME (0x0001) but NOT MHD_NEWNUMBERING.
+multivol_newnaming_rar300.part01.rar	8192	Same input, RAR 3.0+ default: new-style naming (.part01.rar, …). MainHead carries MHD_NEWNUMBERING (0x0010).
+multivol_newnaming_rar300.part02.rar	1708	Same input, RAR 3.0+ default: new-style naming (.part01.rar, …). MainHead carries MHD_NEWNUMBERING (0x0010).
+solid_rar300.rar	9956	Solid archive: MainHead has MHD_SOLID (0x0008) and FileHead carries FHD_SOLID (0x0010) on every file but the first.

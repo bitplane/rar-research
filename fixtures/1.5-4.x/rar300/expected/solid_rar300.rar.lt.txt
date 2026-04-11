@@ -1,0 +1,18 @@
+
+RAR 3.00    Copyright (c) 1993-2002 Eugene Roshal    14 May 2002
+Shareware version         Type RAR -? for help
+
+Solid archive solid_rar300.rar
+
+ Name             Size   Packed Ratio  Date   Time     Attr      CRC   Meth Ver
+               Host OS    Solid   Old
+-------------------------------------------------------------------------------
+ hello.txt          30       45 100% 27-04-26 06:54   .....A   A538535E m3e 2.9
+              Win95/NT       No   No
+ tiny.txt            9        3  33% 27-04-26 06:54   .....A   D27B5891 m3e 2.9
+              Win95/NT      Yes   No
+ bigtext_64k.bin    65536     9753  14% 27-04-26 06:54   .....A   DDC95682 m3e 2.9
+              Win95/NT      Yes   No
+-------------------------------------------------------------------------------
+    3            65575     9801  14%
+

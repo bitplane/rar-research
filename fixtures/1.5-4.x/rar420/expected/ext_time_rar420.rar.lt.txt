@@ -1,0 +1,14 @@
+
+RAR 4.20   Copyright (c) 1993-2012 Alexander Roshal   9 Jun 2012
+Trial version             Type RAR -? for help
+
+Archive ext_time_rar420.rar
+
+ Name             Size   Packed Ratio  Date   Time     Attr      CRC   Meth Ver
+               Host OS    Solid   Old
+-------------------------------------------------------------------------------
+ hello.txt          30       30 100% 27-04-26 06:54  .....A.   A538535E m0b 2.9
+               Windows       No   No
+-------------------------------------------------------------------------------
+    1               30       30 100%
+

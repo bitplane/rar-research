@@ -1,0 +1,6 @@
+_refs/
+research/
+*.codex
+*.claude
+fixtures/**/.work/
+__pycache__

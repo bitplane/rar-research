@@ -1,0 +1,6 @@
+rar721_rr5_64k.rar	70524	rec_pct=5,  archive_size=65681,  NR=3,  shard_size=1604, header_size=592
+rar721_rr20_64k.rar	86566	rec_pct=20, archive_size=65681,  NR=13, shard_size=1604, header_size=592
+rar721_rr50_64k.rar	117042	rec_pct=50, archive_size=65681,  NR=32, shard_size=1604, header_size=592
+rar721_rr10_16k.rar	17744	rec_pct=10, archive_size=16531,  NR=1,  shard_size=1182, header_size=208
+rar721_rr10_64k.rar	75338	rec_pct=10, archive_size=65681,  NR=6,  shard_size=1604, header_size=592
+rar721_rr10_128k.rar	156720	rec_pct=10, archive_size=131223, NR=12, shard_size=2122, header_size=1104

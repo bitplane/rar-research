@@ -1,0 +1,20 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: filter_delta.rar
+Details: RAR 5
+
+        Name: delta_4ch_ramp.bin
+        Type: File
+        Size: 262144
+ Packed size: 600
+       Ratio: 0%
+       mtime: 2026-04-27 06:23:13,918917300
+  Attributes: ..A....
+      BLAKE2: 86e1bcb46b3c36d9f301571d02c4a90f81f2c3ebc5b407ec8966b74a7e5c0c57
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m5 -md=512K
+
+     Service: EOF
+

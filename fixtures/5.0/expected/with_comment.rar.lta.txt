@@ -1,0 +1,33 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+This is the archive comment.
+
+
+Archive: with_comment.rar
+Details: RAR 5
+
+        Name: CMT
+        Type: Service
+        Size: 30
+ Packed size: 30
+       Ratio: 100%
+  Attributes: .B
+       CRC32: 71CAAF73
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+        Name: hello.txt
+        Type: File
+        Size: 30
+ Packed size: 30
+       Ratio: 100%
+       mtime: 2026-04-27 06:22:52,569342800
+  Attributes: ..A....
+      BLAKE2: 2c897ab5816d5d1334595840d6ce5729076c0be247b2202dbab1b8957b919c52
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+     Service: EOF
+

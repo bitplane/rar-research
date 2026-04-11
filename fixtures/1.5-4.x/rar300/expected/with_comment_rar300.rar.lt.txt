@@ -1,0 +1,23 @@
+
+RAR 3.00    Copyright (c) 1993-2002 Eugene Roshal    14 May 2002
+Shareware version         Type RAR -? for help
+
+This is the archive comment.
+
+
+Archive with_comment_rar300.rar
+
+ Name             Size   Packed Ratio  Date   Time     Attr      CRC   Meth Ver
+               Host OS    Solid   Old
+-------------------------------------------------------------------------------
+Data header type: CMT
+ CMT                29       42 100% 27-04-26 06:54   .....B   74408A62 m3a 2.9
+              Win95/NT       No   No
+Comment: This is the archive comment.
+
+
+ hello.txt          30       30 100% 27-04-26 06:54   .....A   A538535E m0b 2.9
+              Win95/NT       No   No
+-------------------------------------------------------------------------------
+    1               30       30 100%
+

@@ -1,0 +1,14 @@
+
+RAR 3.00    Copyright (c) 1993-2002 Eugene Roshal    14 May 2002
+Shareware version         Type RAR -? for help
+
+Archive ppmd_lorem_rar300.rar
+
+ Name             Size   Packed Ratio  Date   Time     Attr      CRC   Meth Ver
+               Host OS    Solid   Old
+-------------------------------------------------------------------------------
+ lorem_127k.txt   130048    13276  10% 27-04-26 06:35   .....A   C119B4E5 m5b 2.9
+              Win95/NT       No   No
+-------------------------------------------------------------------------------
+    1           130048    13276  10%
+

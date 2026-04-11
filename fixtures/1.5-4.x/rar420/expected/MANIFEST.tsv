@@ -1,0 +1,2 @@
+ext_time_rar420.rar	103	Extended-time block (LHD_EXTTIME 0x1000) with mtime+ctime+atime nibble groups. Each time gets a flag-nibble (4 bits) followed by 0..3 bytes of nanosecond precision.
+header_encrypted_rar420.rar	164	RAR 4.20 -hp variant for cross-version-of-encoder coverage (RAR 3.x format, but 4.20 encoder defaults may differ on flag bits).

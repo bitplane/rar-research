@@ -1,0 +1,29 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: with_recovery.rar
+Details: RAR 5, recovery record
+
+        Name: hello.txt
+        Type: File
+        Size: 30
+ Packed size: 30
+       Ratio: 100%
+       mtime: 2026-04-27 06:22:54,796567600
+  Attributes: ..A....
+      BLAKE2: 2c897ab5816d5d1334595840d6ce5729076c0be247b2202dbab1b8957b919c52
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+        Name: RR
+        Type: Service
+        Size: 210
+ Packed size: 210
+       Ratio: 100%
+  Attributes: .B
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+     Service: EOF
+

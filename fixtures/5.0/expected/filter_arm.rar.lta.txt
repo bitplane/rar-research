@@ -1,0 +1,20 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: filter_arm.rar
+Details: RAR 5
+
+        Name: arm_synthetic.bin
+        Type: File
+        Size: 4096
+ Packed size: 3526
+       Ratio: 86%
+       mtime: 2026-04-27 06:23:07,536048800
+  Attributes: ..A....
+      BLAKE2: 323d3e11293bc7764dce6686f11312eda7505e9397046f2345db820557a323be
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m5 -md=128K
+
+     Service: EOF
+

@@ -1,0 +1,7 @@
+
+RAR 4.20   Copyright (c) 1993-2012 Alexander Roshal   9 Jun 2012
+Trial version             Type RAR -? for help
+
+Archive header_encrypted_rar420.rar
+  0 files
+

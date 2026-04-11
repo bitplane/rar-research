@@ -1,0 +1,4 @@
+ppmd_lorem_rar300.rar	13349	Unpack29 PPMd-mode (-m5 -mct, method 'm5b'), 127 KB lorem ipsum input.
+ppmd_escape_rar300.rar	408	Unpack29 PPMd-mode with repeated literal 0x02 bytes to pin escape-character handling.
+ppmd_solid_rar300.rar	19925	Solid Unpack29 PPMd archive with two text members to pin model/state reuse.
+ppmd_mixed_rar300.rar	78931	Mixed text and binary archive generated with -mct to look for PPMd/LZ transitions.

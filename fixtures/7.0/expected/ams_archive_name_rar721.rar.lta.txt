@@ -1,0 +1,22 @@
+
+RAR 7.21 beta 1 x64   Copyright (c) 1993-2026 Alexander Roshal   26 Apr 2026
+Trial version             Type 'rar -?' for help
+
+Archive: ams_archive_name_rar721.rar
+Details: RAR 5
+Original name: ams_archive_name_rar721.rar
+Original time: 2026-04-27 07:23:44,641489800
+
+        Name: hello7.txt
+        Type: File
+        Size: 31
+ Packed size: 31
+       Ratio: 100%
+    Modified: 2026-04-27 07:23:43,808947400
+  Attributes: ..A....
+      BLAKE2: 83d2d69e99d023ad21d98881f2cbfb56dd804fe7f4014fb00a3e6a2a96c204f5
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128k
+
+     Service: EOF
+

@@ -1,0 +1,1 @@
+{"archive":"fixtures/rarvm/archives/x86_e8_rar393.rar","first_byte":182,"flags":176,"filter_index":0,"block_start_raw":0,"block_start_window":0,"block_size":32768,"init_mask":1,"init_r":[6,0,0,245760,32768,0,0,22724],"code_size":29,"crc32":"0e06077d","xor":"00","xor_ok":true,"standard_filter":"DELTA","code_hex":"2f019a4180ec27482f09766dd3ea415b5944e8175ce16c914c4e3f7700"}

@@ -1,0 +1,31 @@
+stored.rar	103	Stored only, CRC32 hash, no compression.
+stored_blake2.rar	134	Stored only, BLAKE2sp hash.
+m1_fastest.rar	12582	-m1 fastest compression on 64 KB of text.
+m3_default.rar	10007	-m3 default compression.
+m5_max.rar	9922	-m5 maximum compression.
+dict_128k.rar	75028	Dictionary 128 KB (CompInfo encodes the explicit -md value).
+dict_1m.rar	74962	Dictionary 1 MB. RAR clamps the requested dict to the input size, so values >1M (-md4m, etc.) round down to 1M for this 512 KB input.
+password_aes.rar	201	Per-file AES-256 encryption (-p), BLAKE2sp HashMAC.
+password_crc32.rar	170	Per-file AES-256 encryption (-p), CRC32 (MAC-converted).
+header_encrypted.rar	302	Whole-archive header encryption (-hp).
+with_comment.rar	188	Archive comment (CMT service header).
+with_recovery.rar	370	10% recovery record (RR service header).
+with_quickopen.rar	396	Quick Open cache (QO service header).
+with_all_services.rar	1002	Comment + RR + QO together; exercises Locator extra in main header.
+multifile.rar	4389	Multiple files, non-solid.
+solid.rar	228	Solid archive (-s).
+multivol.part1.rar	2048	Multi-volume (-v2k → 2 KB volumes; rar emits multivol.part1.rar, multivol.part2.rar, ...).
+multivol.part2.rar	2048	Multi-volume (-v2k → 2 KB volumes; rar emits multivol.part1.rar, multivol.part2.rar, ...).
+multivol.part3.rar	609	Multi-volume (-v2k → 2 KB volumes; rar emits multivol.part1.rar, multivol.part2.rar, ...).
+filter_arm.rar	3639	ARM filter trigger (synthetic BL stream).
+filter_e8.rar	891	E8 (x86 CALL) filter trigger.
+filter_e8e9.rar	899	E8E9 (x86 CALL+JMP) filter trigger.
+filter_delta.rar	717	DELTA filter trigger (4-channel ramp).
+empty_file.rar	104	Single empty (zero-byte) file.
+multivol_rev.part1.rar	4096	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').
+multivol_rev.part2.rar	4096	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').
+multivol_rev.part3.rar	4096	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').
+multivol_rev.part4.rar	4096	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').
+multivol_rev.part5.rar	1032	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').
+multivol_rev.part1.rev	4183	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').
+multivol_rev.part2.rev	4183	Multi-volume + recovery volumes (-v4k -rv2 -m0). 16 KB stored input → 5 .partN.rar + 2 .partN.rev. Exercises REV5_SIGN ('Rar!\x1aRev').

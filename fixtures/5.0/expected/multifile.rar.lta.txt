@@ -1,0 +1,42 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: multifile.rar
+Details: RAR 5
+
+        Name: hello.txt
+        Type: File
+        Size: 30
+ Packed size: 30
+       Ratio: 100%
+       mtime: 2026-04-27 06:23:01,294316200
+  Attributes: ..A....
+      BLAKE2: 2c897ab5816d5d1334595840d6ce5729076c0be247b2202dbab1b8957b919c52
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+        Name: tiny.txt
+        Type: File
+        Size: 9
+ Packed size: 9
+       Ratio: 100%
+       mtime: 2026-04-27 06:23:01,294544500
+  Attributes: ..A....
+      BLAKE2: 920c1484c2197c1fe8549aef4289b993c88f5d0133bd20d4d6595def26d338b6
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+        Name: random_4k.bin
+        Type: File
+        Size: 4096
+ Packed size: 4096
+       Ratio: 100%
+       mtime: 2026-04-27 06:23:01,294770800
+  Attributes: ..A....
+      BLAKE2: e7fa8cfde49e0c97e800a8bf7c1b1866327d4f011779e2776252a8242084b958
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+     Service: EOF
+

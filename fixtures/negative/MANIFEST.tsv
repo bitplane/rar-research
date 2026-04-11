@@ -1,0 +1,13 @@
+# path	size	sha256	note
+readme_154_normal.trunc1.rar	1	8c2574892063f995fdf756bce07f46c1a5193e54cd52837ed91e32008ccf41ac	derived from fixtures/1.54/readme_154_normal.rar
+readme_154_normal.trunc-half.rar	1064	14d7bcb17e85e43b4eb2fa5c4f72c288a0c50edb9c0c8a6367cd188edc014175	derived from fixtures/1.54/readme_154_normal.rar
+readme_154_normal.bitflip.rar	2129	4a1be53297dde6ee9a5b513bc31fcb452e0ae1728e5a085bb3904c19567102ff	derived from fixtures/1.54/readme_154_normal.rar
+readme.trunc1.EXE	1	08f271887ce94707da822d5263bae19d5519cb3614e0daedc4c7ce5dab7473f1	derived from fixtures/1.54/readme.EXE
+readme.trunc-half.EXE	4694	1ee568a4a59964c0e7eeac930af6c69c75fde22252d2168e53fbc8a061c929b0	derived from fixtures/1.54/readme.EXE
+readme.bitflip.EXE	9388	13566bb773767443648dbbc51ac8c7e4b87ad68a228af0a26c79cef435e153e2	derived from fixtures/1.54/readme.EXE
+random.trunc1.rar	1	8c2574892063f995fdf756bce07f46c1a5193e54cd52837ed91e32008ccf41ac	derived from fixtures/1.54/random.rar
+random.trunc-half.rar	365056	de276d28703d94b3fea19ce428a5ebd6722c9f32dc5e4f27e810f1e3bd672bf8	derived from fixtures/1.54/random.rar
+random.bitflip.rar	730112	5080b074fdb4453db28b7b57ab51fe3130d8dce280b41b0303293999cd37ca44	derived from fixtures/1.54/random.rar
+delta_4ch_rar393.trunc1.rar	1	8c2574892063f995fdf756bce07f46c1a5193e54cd52837ed91e32008ccf41ac	derived from fixtures/rarvm/archives/delta_4ch_rar393.rar
+delta_4ch_rar393.trunc-half.rar	404	7be533e334f7d90d7ffb924edb92318e9365f55a9f1a1c204d331005856d52f1	derived from fixtures/rarvm/archives/delta_4ch_rar393.rar
+delta_4ch_rar393.bitflip.rar	808	6f002d6b6d6f45e7050977f88193764ce1ecb77594822eeb0fb29ec994805716	derived from fixtures/rarvm/archives/delta_4ch_rar393.rar

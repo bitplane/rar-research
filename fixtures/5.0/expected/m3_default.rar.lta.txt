@@ -1,0 +1,29 @@
+
+RAR 6.02 x86   Copyright (c) 1993-2021 Alexander Roshal   11 Jun 2021
+Trial version             Type 'rar -?' for help
+
+Archive: m3_default.rar
+Details: RAR 5
+
+        Name: bigtext_64k.bin
+        Type: File
+        Size: 65536
+ Packed size: 9784
+       Ratio: 14%
+       mtime: 2026-04-27 06:22:36,791256700
+  Attributes: ..A....
+      BLAKE2: c882ccda2c7386ab17fccce38f8a579748a154868efd710552a81d05e4e9c127
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m3 -md=128K
+
+        Name: QO
+        Type: Service
+        Size: 90
+ Packed size: 90
+       Ratio: 100%
+  Attributes: .B
+     Host OS: Windows
+ Compression: RAR 5.0(v50) -m0 -md=128K
+
+     Service: EOF
+

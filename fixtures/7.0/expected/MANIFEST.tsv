@@ -1,0 +1,1 @@
+ams_archive_name_rar721.rar	175	WinRAR 7.21 -ams switch: archive's own filename stored as a new extra record in the main header. Wire format is still RAR 5.0 ('Rar!\x1a\x07\x01'), not Unpack70 — the new feature is the extra record, not the codec.
