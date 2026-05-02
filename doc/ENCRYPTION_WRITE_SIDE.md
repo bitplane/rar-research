@@ -219,9 +219,9 @@ def set_key_20(password):
     SubstTable20 = list(InitSubstTable20)                       # reset
 
     for J in 0..255:
-        for I in 0, 2, 4, ... up to PswLength-2:                # step 2
+        for I in 0, 2, 4, ... while I < PswLength:              # step 2
             N1 = CRCTab[(password[I]   - J) & 0xff] & 0xff
-            N2 = CRCTab[(password[I+1] + J) & 0xff] & 0xff
+            N2 = CRCTab[((password[I+1] if I+1 < PswLength else 0) + J) & 0xff] & 0xff
             K = 1
             while N1 != N2:
                 Swap(SubstTable20[N1], SubstTable20[(N1 + I + K) & 0xff])
@@ -236,9 +236,10 @@ def set_key_20(password):
 The two-step shuffle: a CRCTab-driven swap pass mixes the password
 into `SubstTable20`, then encrypting the zero-padded password
 finalizes the cipher state by exercising both `Key20` evolution (via
-`upd_keys_20`) and the round structure on real data. Both encoder and
-decoder run the **same** routine — direction during key setup is
-always encrypt.
+`upd_keys_20`) and the round structure on real data. For odd-length
+passwords, the final shuffle pair uses the terminating zero byte as
+`password[I+1]`. Both encoder and decoder run the **same** routine —
+direction during key setup is always encrypt.
 
 The shuffle's `K=1; N1 != N2; ...` inner loop has no fixed iteration
 count: it can stall until `N1` happens to equal `N2`. For some

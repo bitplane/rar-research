@@ -385,7 +385,8 @@ The minimum oracle for an encoder/decoder pair, per format version:
 | RAR 1.5–4.x | single file, all methods (0x30–0x35) | Our output decodes via public RAR reader |
 | RAR 1.5–4.x | multi-file, solid | Our output decodes via public RAR reader; CRCs match per file |
 | RAR 1.5–4.x | multi-volume | Our split output joins and extracts via public RAR reader |
-| RAR 1.5–4.x | encrypted (`-p`) | Round-trip with known password |
+| RAR 2.0 | encrypted files (`-p`) | Decode `rarfile/rar202-comment-psw.rar` with password `password`; `FILE1.TXT` is `file1\r\n`, `FILE2.TXT` is `file2\r\n`, and both CRC32 fields match |
+| RAR 3.x/4.x | encrypted files (`-p`) | Decode `fixtures/1.5-4.x/rar300/encrypted_per_file_rar300.rar` with password `password`; `hello.txt` is `Hello, RAR 3.x fixture world.\n` and CRC32 is `0xa538535e` |
 | RAR 1.5–4.x | encrypted (`-hp`) | Round-trip with header encryption |
 | RAR 2.9–4.x | PPMd block (UnpVer = 29, RAR `-mc` switch) | Round-trip of large text input. Method byte (`0x30..0x35`) is compression *level*, not codec selector — PPMd is requested via `-mc<MODE>:<MEM>` independent of method byte. |
 | RAR 1.5–4.x | with recovery record | `rar r` can repair after bit-flip in data |

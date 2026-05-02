@@ -1939,8 +1939,8 @@ crc_tab = standard CRC32 table
 for j = 0 to 255:
     for i = 0, step 2, while i < password_length:
         n1 = crc_tab[(password[i] - j) & 0xFF] & 0xFF
-        i1 = min(i + 1, password_length - 1)
-        n2 = crc_tab[(password[i1] + j) & 0xFF] & 0xFF
+        p2 = password[i + 1] if i + 1 < password_length else 0
+        n2 = crc_tab[(p2 + j) & 0xFF] & 0xFF
         k = 1
         while n1 != n2:
             swap(SubstTable[n1], SubstTable[(n1 + i + k) & 0xFF])
@@ -1950,7 +1950,8 @@ for j = 0 to 255:
 
 After shuffling, the password is padded to a 16-byte boundary with zeros, then
 each 16-byte block is encrypted using the Feistel cipher to further mix the
-key state.
+key state. If the password length is odd, the final substitution-table shuffle
+pairs the last password byte with the implicit zero terminator.
 
 **Feistel cipher (32 rounds per 16-byte block):**
 
