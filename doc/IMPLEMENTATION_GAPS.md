@@ -47,15 +47,17 @@ external material.
 
 ## Fixture coverage
 
-Per-version inventory (last updated 2026-04-27):
+Per-version inventory (last updated 2026-05-02):
 
 | Dir | Encoder | Coverage |
 |---|---|---|
 | `fixtures/1.402/` | RAR 1.402 (DOSBox-X) | Original 3 fixtures (stored / compressed / encrypted README) plus 10 edge cases: empty file, multi-file, stored encrypted file, >64 KiB window-wrap, solid, multi-volume (4 parts, old `.RAR`/`.R0N` naming), directory entry, SFX with `RSFX` marker at offset 28, archive comment, repeating-pattern `Buf60` toggle candidate. |
-| `fixtures/1.54/` | WinRAR 1.54 (DOSBox) | Single-file compressed, solid, multi-file, multi-volume, SFX. |
-| `fixtures/2.50/` | RAR 2.50 (DOSBox-X) | Unpack20 audio mode (Channels=2 PCM input → audio block) and LZ contrast (text input → encoder rejects audio mode). |
+| `fixtures/1.54/` | WinRAR 1.54 (DOSBox) | Single-file compressed, CRYPT_RAR15 encrypted compressed, solid, multi-file, multi-volume, SFX, plus audio-shaped WAV payloads with Windows long names and DOS 8.3 names. |
+| `fixtures/2.02/` | External `rarfile` corpus | Old-format RAR 2.x main-header comment extension boundary plus RAR 2.0 encrypted compressed members using `CRYPT_RAR20`. |
+| `fixtures/2.50/` | RAR 2.50 (DOSBox-X) | Unpack20 LZ coverage from `-mm` multimedia-switch input, external audio-shaped inputs that still select LZ, explicit LZ contrast, solid carry-over, and larger LZ streams. No committed vintage-encoder archive fixture currently proves a true audio block; `AUDIO.RAR` starts with table-read peek `0x0040`, and `unpack20_audio_text.rar` starts with `0x2221`, so bit 15 is clear in both. `rars` has synthetic one-channel audio coverage at codec level and synthetic in-memory RAR 2.0 archive coverage for channel counts 1, 2, 3, and 4. |
 | `fixtures/1.5-4.x/rar300/` | WinRAR 3.00 (wine) | Per-file `-p` encryption, header `-hp`, comment, recovery record (`HEAD3_NEWSUB "RR"`), multi-volume both old (`.r00`) and new (`.partNN.rar`) naming, solid. |
 | `fixtures/1.5-4.x/rar420/` | WinRAR 4.20 (wine) | EXT_TIME nibble groups, `-hp` cross-version. |
+| `fixtures/1.5-4.x/third_party/` | External corpora | Focused edge-case oracles with documented provenance. Includes the libarchive mixed encrypted RAR4 fixture, where only member `b.txt` is a positive oracle because historical RAR 3.93 validates it while rejecting later member `d.txt`; junrar and SharpCompress RAR4 encrypted/header-encrypted password fixtures; and the node-unrar-js mixed visible-name fixture used only for metadata, stored-member, and negative password behaviour because the encrypted-member passwords are unknown after local and upstream fixture-source audits. |
 | `fixtures/1.5-4.x/` | RAR 2.50 (DOSBox-X) | Two `PROTECT_HEAD` recovery-record fixtures (`rar250_protect_head_rr1.rar`, `…_rr5.rar`) — pin the per-sector tag formula and interleaved-XOR parity in `INTEGRITY_WRITE_SIDE.md §3.4`. |
 | `fixtures/1.5-4.x/wrar290/` | WinRAR 2.90 (wine, registration-patched) | One `HEAD3_SIGN` shape fixture (`wrar290_head3_sign_patched.rar`) — pins the §10.9.1 block layout end-to-end. Signature is degenerate (BSS-zero registration buffer); see fixture README. |
 | `fixtures/1.402/rar140_av/` | RAR 1.40 DOS (DOSBox-X, registration-patched) | Paired AV shape fixtures (`rar140_noav_baseline.rar`, `rar140_av_patched.rar`) — pin the RAR 1.4 main-header AV-payload layout in `RAR13_FORMAT_SPECIFICATION.md §4.1`. Cipher output is degenerate (BSS-zero registration); see fixture README. |
@@ -91,23 +93,21 @@ project), symbol-rename, dynamic capture via DOSBox-X / wine.
   writing the RS encoder side-by-side with WinRAR's. Anchors are
   named in `research/re/winrar602/symbols.tsv`.
 
-- **RAR 2.x AV body codec (modern format byte `'4'`) — codec stage.**
+- **RAR 2.x AV body codec (modern format byte `'4'`) — AV framing stage.**
   The decryption stage (§10.8 block cipher) is fully ported and
   empirically validated against ground truth captured under
   DOSBox-X: clean-room Python output matches the binary's runtime
   decryption byte-for-byte (80/80 bytes) for the `rar250_sfx.exe`
   fixture (`research/re/rar250/scripts/decode_av_legacy.py`,
-  `patch_dump_full.py`, `patch_dump_init_keys.py`). What's still
-  open is the *audio decode* half: the `rar250_sfx.exe` fixture's
-  decrypted byte 0 has the audio-bit *clear*, meaning the codec
-  runs in standard Unpack20 LZ mode (alphabet `0x176`) — not the
-  `Channels=2` audio path that
-  `research/re/rar250/scripts/decode_av_modern.py` was written
-  for. To reproduce `AVDUMP.BIN` (305 bytes) byte-for-byte from the
-  decrypted stream, the in-tree decoder needs an Unpack20 LZ-mode
-  port. Reference implementation lives in
-  `_refs/unrar/unpack20.cpp`. Once the LZ-mode decoder lands,
-  `audio_decode(decrypt(AV_WIRE_BODY)) == AVDUMP.BIN` should hold.
+  `patch_dump_full.py`, `patch_dump_init_keys.py`). The generic
+  Unpack20 LZ path now exists in `rars-codec`, so the remaining
+  blocker is narrower: map the AV-specific body framing/table bytes
+  into the Unpack20 reader state so the decrypted 80-byte body
+  expands to the captured 305-byte `AVDUMP.BIN`. Earlier notes in
+  `research/re/rar250/notes.md` show that feeding `AV_WIRE_BODY.bin`
+  directly into standalone experiments does not reproduce the binary
+  output, which implies an additional AV wrapper transform or table
+  initialization detail still needs to be pinned.
 
 - **RAR 2.x AV legacy format byte `'0'` — wild / real-registered
   fixture.** The cipher cluster (byte-stream and 16-byte-block
@@ -156,10 +156,11 @@ project), symbol-rename, dynamic capture via DOSBox-X / wine.
   ctime/atime combinations): wine's filesystem layer loses sub-second
   precision before `Rar.exe` sees the source mtime. Needs a Linux host
   with nanosecond timestamps and direct `utimensat()`.
-- **`FHD_UNICODE` Form 1** (RAR 1.5–4.x compact Unicode filename
-  encoding): wine hands cp437-encoded `argv` to `Rar.exe`, dropping CJK
-  and mapping Latin-1 to cp437 — encoder sees a "fully representable"
-  filename and skips the Unicode form.
+- **Additional `FHD_UNICODE` Form 1 encoder cases** (RAR 1.5–4.x compact
+  Unicode filename encoding): third-party fixtures now cover read-side CJK
+  compact-name decoding. Wine still makes it hard to generate controlled
+  WinRAR-authored Form 1 names for write-side cross-checks because it hands
+  cp437-encoded `argv` to `Rar.exe`, dropping CJK and mapping Latin-1 to cp437.
 - **MOTW propagation** (`-om` switch, RAR 7): needs an NTFS
   `Zone.Identifier` ADS attached to the source file before archiving.
 
@@ -179,19 +180,36 @@ input that happens to trigger an internal threshold.
 
 - **RAR 1.402 StMode**: requires a specific Huffman-decode burst pattern
   (`NumHuf >= 16` per `unpack15.cpp:373`).
-- **Unpack20 audio with `Channels = 1, 3, or 4`**: covered for `Channels =
-  2` (stereo PCM). Forcing other channel counts needs either a custom
-  encoder or an input whose autocorrelation prefers that count; RAR 2.50
-  doesn't expose a per-block channel-count switch.
+- **Unpack20 audio with `Channels = 1..4`**: no committed vintage-encoder
+  archive fixture currently proves a true audio block. `rars` has synthetic
+  one-channel audio coverage at codec level and synthetic in-memory RAR 2.0
+  archive coverage for channel counts 1, 2, 3, and 4, but RAR 2.50 `-mm` and
+  `-mmf` local probes, including mono/3-channel/4-channel WAV-shaped inputs,
+  selected normal LZ blocks.
+  `scripts/find-rar20-audio-candidates.py` scanned the local external
+  corpus, spec fixtures, promoted crate fixtures, and old numbered volumes
+  (517 archive/volume files total, excluding hidden scratch directories) and
+  found no clean standalone vintage audio-block fixture. All 36 raw bit-15
+  candidates were encrypted members, split continuations, solid continuation
+  members, or stored/raw data false positives.
+  `fixtures/2.50/SOLID.RAR` deliberately pins one such trap: the
+  second member's raw data-start peek is `0xdfbe`, but it is an `LHD_SOLID`
+  continuation and not a fresh table-read boundary.
+  Forcing vintage channel-count fixtures needs either a custom encoder or an
+  input whose autocorrelation reliably prefers the audio predictor.
 - **`-me<par>` RAR 7 explicit encryption parameters**: defaults match
   6.02; would need to identify which parameter combinations actually shift
   the on-disk CompInfo bytes.
 
-### E. Gated on the rars encoder existing
+### E. Gated on broader rars encoder coverage
 
 - **Round-trip oracle** (write → read identity, every fixture): the
-  only test that proves an encoder + decoder pair self-consistent. Can't
-  start until rars itself can write archives.
+  only test that proves an encoder + decoder pair self-consistent. This has
+  started for narrow RAR 1.5 store-only, compressed, solid-compressed,
+  old-numbered multivolume, old-style archive/file comments, and per-file
+  encrypted paths including encrypted split volumes; it still needs
+  public-reader oracle fixtures for generated output and later RAR families
+  before it can act as a broad format oracle.
 
 ---
 
@@ -221,9 +239,9 @@ files, with WinRAR's exact choice noted as "implementation-defined."
   reuses or regenerates IV/salt per solid group or per file.
   `ENCRYPTION_WRITE_SIDE.md §7` recommends fresh-per-record for
   clean-room output.
-- **RAR 2.x multimedia audio channel-count selection** — how WinRAR
-  picks `Channels = 1..4` for a multimedia block. Decoder behaviour and
-  the safe exhaustive-search encoder default are documented in
+- **RAR 2.x multimedia audio channel-count selection** — how WinRAR picks
+  audio blocks at all, then `Channels = 1..4`, for a multimedia block. Decoder
+  behaviour and the safe exhaustive-search encoder default are documented in
   `RAR15_40_FORMAT_SPECIFICATION.md §16.11.6`.
 - **Quick Open writer threshold policy** — when WinRAR decides a RAR 5.0
   Quick Open cache is worth emitting. The cache format is documented in

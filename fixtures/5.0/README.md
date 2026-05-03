@@ -23,6 +23,9 @@ plus a `MANIFEST.tsv` with sizes and descriptions.
 | `m3_default.rar` | `-m3 -ma5 -htb` | Default compression. |
 | `m5_max.rar` | `-m5 -ma5 -htb` | Maximum compression. |
 
+These three method fixtures are also crate-level `rars` read-side tests for
+the initial non-filtered Unpack50 LZ decoder path.
+
 ### Dictionary size (CompInfo bitfield variation)
 
 | Fixture | Switches | Notes |
@@ -52,8 +55,8 @@ plus a `MANIFEST.tsv` with sizes and descriptions.
 | Fixture | Switches | Notes |
 |---------|----------|-------|
 | `multifile.rar` | (3 inputs, non-solid) | `hello.txt` + `tiny.txt` + `random_4k.bin`. |
-| `solid.rar` | `-s` | Two files in one solid group. |
-| `multivol.part1.rar` + `.part2.rar` + `.part3.rar` | `-v2k` | 4 KB input split across 3 volumes (~2 KB each). Exercises `LHD_SPLIT_BEFORE` / `LHD_SPLIT_AFTER` flags and end-of-archive marker `EARC_NEXTVOLUME` bit. |
+| `solid.rar` | `-s` | Two files in one solid group. Also a crate-level `rars` read-side test for single-archive RAR5 solid decoder state carry-over. |
+| `multivol.part1.rar` + `.part2.rar` + `.part3.rar` | `-v2k` | 4 KB input split across 3 volumes (~2 KB each). Exercises `LHD_SPLIT_BEFORE` / `LHD_SPLIT_AFTER` flags and end-of-archive marker `EARC_NEXTVOLUME` bit. Also a crate-level `rars` read-side test for compressed RAR5 multivolume extraction. |
 | `multivol_rev.part{1..5}.rar` + `multivol_rev.part{1,2}.rev` | `-v4k -rv2 -m0` | 16 KB input split across 5 data volumes + 2 recovery volumes. The `.rev` files use `REV5_SIGN = "Rar!\x1aRev"` (`5261 7221 1a52 6576`) and follow the layout in `INTEGRITY_WRITE_SIDE.md` §4.7. |
 
 ### Filter triggers (RAR 5.0 hardcoded enum)
@@ -68,11 +71,10 @@ applicability based on input contents.
 | `filter_e8e9.rar` | `x86_e8e9_stream.bin` | E8E9 (type 2) |
 | `filter_delta.rar` | `delta_4ch_ramp.bin` | DELTA (type 0) |
 
-To verify a fixture actually triggered the intended filter, examine the
-unpacked block stream — RAR 6.02's `lta` output doesn't surface filter
-selection. An instrumented decoder is needed for confirmation; until one
-exists, treat these as "filter trigger candidates" rather than confirmed
-captures.
+RAR 6.02's `lta` output does not surface filter selection, so the intended
+filter type is inferred from the generated source and encoder switches rather
+than from an independent filter trace. These four fixtures are crate-level
+`rars` read-side tests for the RAR5 fixed-filter inverse path.
 
 ### Edge cases
 

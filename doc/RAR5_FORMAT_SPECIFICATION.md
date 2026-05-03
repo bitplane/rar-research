@@ -815,7 +815,9 @@ using a two-level scheme.
 
 First, a "level" table of 20 symbols is read. Each symbol's bit length is encoded
 in 4 bits. A bit length of 15 followed by a 4-bit count N means the next
-`N + 2 + current_position` entries are zero (run-length of zeros).
+`N + 2` entries, starting at the current table position, are zero (run-length
+of zeros). A following count of zero means the current entry is literal bit
+length 15.
 
 This level table is used to Huffman-decode the bit lengths for the four main tables.
 

@@ -57,7 +57,7 @@ Quick sanity vectors:
 | Input | BLAKE2sp (hex) |
 |-------|----------------|
 | `""` (empty) | `dd0e891776933f43c7d032b08a917e25741f8aa9a12c12e1cac8801500f2ca4f` |
-| `"abc"` | `34d6cf42076a96db8e19a872d5e15ce11e24a6c058bef71e40d5cd20e4ad43ad` |
+| `"abc"` | `70f75b58f1fecab821db43c88ad84edde5a52600616cd22517b7bb14d440a7d5` |
 | 1 MiB of `0x00` | covered by blake2.net's "long" vectors |
 
 Encoders should run BLAKE2sp over the **uncompressed** file data, not
@@ -150,9 +150,15 @@ recovery.
 ## 8. RAR 1.5 encryption
 
 Spec: `ENCRYPTION_WRITE_SIDE.md` §2. Trivial XOR-with-keystream; the
-keystream derives from the password's CRC32. Round-trip oracle
-suffices — the cipher is weak enough that divergence is self-evident
-(corrupt output) rather than silent.
+keystream derives from the password's CRC32. Minimal stream vector:
+
+| Password | Plaintext | Ciphertext |
+|---|---|---|
+| `password` | `68 65 6c 6c 6f 20 77 6f 72 6c 64` (`hello world`) | `2b b9 f3 9c 41 a6 aa e7 1a 7a 7b` |
+
+Because XOR is self-inverse, applying the same routine again with the same
+password must recover the plaintext. Password bytes stop at the first `0x00`
+byte.
 
 ## 9. RAR 1.3 encryption
 
@@ -376,22 +382,48 @@ The minimum oracle for an encoder/decoder pair, per format version:
 | RAR 1.3 container | single file, compressed | Decode `fixtures/1.402/README.RAR`; bytes and rolling sum+rotate checksum match `fixtures/1.402/expected/README` |
 | RAR 1.3 container | single file, encrypted | Decode `fixtures/1.402/README_password=password.rar` with password `password`; bytes and rolling sum+rotate checksum match `fixtures/1.402/expected/README` |
 | RAR 1.5 / Unpack15 | single file, compressed | Decode `fixtures/1.54/readme_154_normal.rar`; CRC and bytes match `fixtures/1.54/expected/README.md` |
+| RAR 1.5 / CRYPT_RAR15 | encrypted compressed file | Decode `fixtures/1.54/readme_154_password.rar` with password `password`; CRC and bytes match `fixtures/1.54/expected/README.md`; archive is WinRAR 1.54-derived and RAR 3.93 validates it |
+| RAR 1.5 / CRYPT_RAR15 | wrong password | Decode `fixtures/1.54/readme_154_password.rar` with a wrong password; reader reports wrong password or corrupt encrypted data |
 | RAR 1.5 / Unpack15 | single file, solid archive flag | Decode `fixtures/1.54/readme_154_store_solid.rar`; CRC and bytes match `fixtures/1.54/expected/README.md` |
 | RAR 1.5 / Unpack15 | SFX | Decode `fixtures/1.54/readme.EXE` from embedded marker |
 | RAR 1.5 / Unpack15 | multi-file corpus | Decode `fixtures/1.54/doc_154_best.rar`; all file CRCs match |
+| RAR 1.5 / Unpack15 | audio-shaped WAV payloads | Decode `fixtures/1.54/audio_win_names_unpack15.rar` and `fixtures/1.54/audio_dos_names_unpack15.rar`; WAV CRC32 is `0x82d2ed89`, text CRC32 is `0x8eaf20c4`, and names preserve Windows long-name vs DOS 8.3 forms |
 | RAR 1.5 / Unpack15 | multi-volume | Decode `fixtures/1.54/random.rar` + `.r00` + `.r01` |
+| RAR 2.0 / Unpack20 | LZ path selected by multimedia switch | Decode `fixtures/2.50/AUDIO.RAR`; first table-read peek is `0x0040`, so bit 15 is clear and the member is an LZ block despite `-mm`; output CRC32 is `0x713ef34b` |
+| RAR 2.0 / Unpack20 | audio-shaped input still selecting LZ | Decode the promoted `unpack20_audio_text.rar` fixture in `rars`; first table-read peek is `0x2221`, so bit 15 is clear despite the WAV-named first member |
+| RAR 2.0 / Unpack20 | synthetic audio blocks, Channels 1..4 | In `rars`, `extracts_synthetic_unp20_audio_block_archive` builds minimal in-memory RAR 2.0 archives whose first table-read peek has bit 15 set and channel bits 0..3; extracted bytes are zero payloads with the declared length. This is a decoder oracle, not a vintage RAR 2.50-authored fixture. |
+| RAR 2.0 / Unpack20 | vintage audio fixture search | Run `./scripts/find-rar20-audio-candidates.py /home/gaz/src/tmp/rar-test-data fixtures /home/gaz/src/tmp/rars/crates/rars-format/tests/fixtures`; current local result is 517 archive/volume files scanned after hidden scratch directories are excluded, 36 raw bit-15 candidates, 0 clean candidates. All candidates are stored, encrypted, split continuations, or solid-continuation false positives rather than confirmed fresh audio-table reads. |
+| RAR 3.x/4.x AES | RAR4 encrypted compressed member | Decode `fixtures/1.5-4.x/third_party/junrar/rar4-password-junrar.rar` with password `junrar`; plaintext is `file1\n`, CRC32 `0xe229f704`; RAR 3.93 validates it |
+| RAR 3.x/4.x AES | RAR4 header-encrypted archive | Decode `fixtures/1.5-4.x/third_party/junrar/rar4-encrypted-junrar.rar` with password `junrar`; plaintext is `file1\n`, CRC32 `0xe229f704`; RAR 3.93 validates it |
+| RAR 3.x/4.x AES + Unicode names | RAR4 compact Unicode filename | Decode `fixtures/1.5-4.x/third_party/junrar/rar4-only-file-content-encrypted.rar` with password `test`; filename decodes to `新建文本文档.txt`, plaintext is `aaaaaaaaaa`, CRC32 `0x4c11cdf0`; RAR 3.93 validates it |
+| RAR 3.x/4.x AES + Unicode names | RAR4 encrypted file set | Decode `fixtures/1.5-4.x/third_party/sharpcompress_rar4_encrypted_files_only.rar` with password `test`; file CRC32 values are `0xcfb109c8`, `0x088814e3`, and `0x9bd160fa`; compact Unicode filename decodes to `тест.txt`; RAR 3.93 validates it |
+| RAR 3.x/4.x AES + visible names | RAR4 mixed unknown-password sample | Parse `fixtures/1.5-4.x/third_party/node-unrar-js/file_enc_by_name_unknown_password.rar`; names decode as `1File.txt`, `2中文.txt`, `3Sec.txt`; first member is unencrypted stored bytes `1File` with CRC32 `0x578a2019`; encrypted members are negative/password-behaviour only until their passwords are known. Local and upstream fixture-source audits found no password hints |
 | RAR 3.x RARVM | stock filter bytecode blobs | Verify `fixtures/rarvm/captured-blobs.md` length + CRC32 + XOR checks |
 | RAR 3.x RARVM | historical encoder matrix | Decode all archives under `fixtures/rarvm/archives*/`; extracted bytes match `fixtures/rarvm/sources/` |
+| RAR 1.5 writer | store-only round trip | `rars` builds RAR 1.5 stored archives through both `ArchiveWriter::write_rar15_stored` and the lower-level format writer, and the CLI creates one via `rars a --format rar15 --store`; the RAR 1.5 reader parses the emitted main/file headers, verifies header CRCs and file CRC32 values, and extracts the original bytes |
+| RAR 1.5 writer | compressed round trip | `rars` builds non-solid RAR 1.5 compressed archives through both `ArchiveWriter::write_rar15_compressed` and the lower-level format writer, and the CLI creates one via `rars a --format rar15`; the RAR 1.5 reader decodes the emitted Unpack15 stream and verifies file CRC32 values |
+| RAR 1.5 writer | old-style archive comment round trip | `rars` builds RAR 1.5 archives with `MHD_COMMENT` and a standalone `COMM_HEAD` (`0x75`) immediately after the main header; the comment payload is stored (`METHOD=0x30`), `COMM_CRC` is the low 16 bits of CRC32 over the text, and the reader decodes it through `archive_comment()`. The CLI path is covered by `rars a --format rar15 --comment text` |
+| RAR 1.5 writer | old-style file comment round trip | `rars` builds RAR 1.5 file headers with `FHD_COMMENT` and a post-name extension containing `uint16 length + raw comment bytes`; the file `HEAD_CRC` is computed only through the fixed file-header/name/salt area and excludes the comment extension, matching the historical CRC boundary. The CLI path is covered by `rars a --format rar15 --file-comment text` |
+| RAR 1.5 writer | solid compressed round trip | `rars` builds a solid RAR 1.5 compressed archive via `ArchiveWriter::with_features({ solid: true })` and the CLI creates one via `rars a --format rar15 --solid`; the main header carries `MHD_SOLID`, subsequent file headers carry `FHD_SOLID`, and the RAR 1.5 reader preserves Unpack15 state across files |
+| RAR 1.5 writer | old-numbered multivolume round trip | `rars` builds stored and compressed RAR 1.5 old-numbered volume sets through the lower-level format writer and CLI (`rars a --format rar15 --volume-size N`, with `--store` for stored output); the first main header carries `MHD_VOLUME | MHD_FIRSTVOLUME`, file headers carry `FHD_SPLIT_BEFORE`/`FHD_SPLIT_AFTER` as appropriate, and `extract_volumes` reassembles and verifies the original bytes |
+| RAR 1.5 writer | per-file encryption round trip | `rars` builds encrypted RAR 1.5 stored and compressed archives using `CRYPT_RAR15`; file headers carry `FHD_PASSWORD`, extraction without a password reports `NeedPassword`, wrong compressed passwords report corrupt data, and extraction with the correct password verifies file CRC32 values. The CLI path is covered by `rars a --password pass --format rar15` |
+| RAR 1.5 writer | encrypted old-numbered multivolume round trip | `rars` builds encrypted stored and compressed split sets; every split file header carries `FHD_PASSWORD`, but CRYPT_RAR15 state is initialized once for the logical packed stream before it is split across volumes. Extraction without a password reports `NeedPassword`, wrong compressed passwords report corrupt data, and extraction with the correct password reassembles, decrypts, and verifies the original bytes. The CLI path is covered by `rars a --password pass --format rar15 --volume-size N` |
 | RAR 1.5–4.x | single file, all methods (0x30–0x35) | Our output decodes via public RAR reader |
 | RAR 1.5–4.x | multi-file, solid | Our output decodes via public RAR reader; CRCs match per file |
 | RAR 1.5–4.x | multi-volume | Our split output joins and extracts via public RAR reader |
-| RAR 2.0 | encrypted files (`-p`) | Decode `rarfile/rar202-comment-psw.rar` with password `password`; `FILE1.TXT` is `file1\r\n`, `FILE2.TXT` is `file2\r\n`, and both CRC32 fields match |
+| RAR 2.0 | encrypted files (`-p`) | Decode `fixtures/2.02/rar202-comment-psw.rar` with password `password`; `FILE1.TXT` is `file1\r\n`, `FILE2.TXT` is `file2\r\n`, and both CRC32 fields match |
+| RAR 2.0 | wrong password | Decode `fixtures/2.02/rar202-comment-psw.rar` with a wrong password; reader reports wrong password or corrupt encrypted data |
 | RAR 3.x/4.x | encrypted files (`-p`) | Decode `fixtures/1.5-4.x/rar300/encrypted_per_file_rar300.rar` with password `password`; `hello.txt` is `Hello, RAR 3.x fixture world.\n` and CRC32 is `0xa538535e` |
-| RAR 1.5–4.x | encrypted (`-hp`) | Round-trip with header encryption |
+| RAR 3.x/4.x | wrong password | Decode the RAR 3.x/4.x encrypted fixtures above with a wrong password; reader reports wrong password or corrupt encrypted data |
+| RAR 4.x | encrypted compressed member (`-p`) | Decode member `b.txt` from `fixtures/1.5-4.x/third_party/libarchive_rar4_mixed_encrypted.rar` with password `password`; plaintext is `This is from b.txt` and CRC32 is `0xa9fa1485`. Do not use this fixture as a whole-archive oracle: member `d.txt` fails under historical RAR 3.93. |
+| RAR 3.x/4.x | encrypted headers (`-hp`) | Decode `fixtures/1.5-4.x/rar300/header_encrypted_rar300.rar` and `fixtures/1.5-4.x/rar420/header_encrypted_rar420.rar` with password `password`; decrypted file header names `hello.txt` and extracted bytes match CRC32 `0xa538535e` |
 | RAR 2.9–4.x | PPMd block (UnpVer = 29, RAR `-mc` switch) | Round-trip of large text input. Method byte (`0x30..0x35`) is compression *level*, not codec selector — PPMd is requested via `-mc<MODE>:<MEM>` independent of method byte. |
 | RAR 1.5–4.x | with recovery record | `rar r` can repair after bit-flip in data |
+| RAR 5.0 | basic compressed methods | `rars` decodes the WinRAR-authored `m1_fastest.rar`, `m3_default.rar`, and `m5_max.rar` fixtures copied from `fixtures/5.0/`; each validates with the file hash/CRC after Unpack50 LZ decoding |
+| RAR 5.0 | solid compressed archive | `rars` decodes the WinRAR-authored `solid.rar` fixture copied from `fixtures/5.0/`; decoder tables, repeat distances, last length, and output history are carried across files in one solid archive |
 | RAR 5.0 | all methods + dictionary sizes | Our output decodes via public RAR reader |
-| RAR 5.0 | all 4 filter types | Round-trip with the filter engaged |
+| RAR 5.0 | all 4 filter types | `rars` decodes the WinRAR-authored `filter_delta.rar`, `filter_e8.rar`, `filter_e8e9.rar`, and `filter_arm.rar` fixtures copied from `fixtures/5.0/`; each validates with the file hash/CRC after Unpack50 decoding plus the fixed filter inverse |
+| RAR 5.0 | compressed multi-volume | `rars` decodes the WinRAR-authored `multivol.part1.rar` + `.part2.rar` + `.part3.rar` set copied from `fixtures/5.0/`; split fragments are chained as one logical packed stream and the final BLAKE2sp file hash validates |
 | RAR 5.0 | encrypted | Round-trip against both `-p` and `-hp` modes |
 | RAR 5.0 | with Quick Open | `rar l` completes quickly against our archive |
 | RAR 5.0 | with RR | `rar r` repairs after bit-flip |
@@ -467,8 +499,13 @@ Observed local reader behavior for the committed fixtures:
 | Fixture family | 7-Zip 25.01 | Historical UnRAR 3.00 | Historical UnRAR 4.20 | Notes |
 |----------------|-------------|------------------------|------------------------|-------|
 | `fixtures/1.402/*.rar` (`RE~^`) | Cannot open | Extracts/tests OK | Extracts/tests OK | Use for RAR 1.3/1.4 container + Unpack15 coverage. |
-| `fixtures/1.54/readme_154_normal.rar` | Lists, extraction reports unsupported method | Extracts/tests OK | Extracts/tests OK | Same for `readme_154_store_solid.rar`, `readme.EXE`, and `doc_154_best.rar`. |
+| `fixtures/1.54/readme_154_normal.rar` | Lists, extraction reports unsupported method | Extracts/tests OK | Extracts/tests OK | Same for `readme_154_store_solid.rar`, `readme.EXE`, `doc_154_best.rar`, and the audio-shaped `audio_*_unpack15.rar` fixtures. `readme_154_password.rar` is WinRAR 1.54-derived and RAR 3.93/4.20 test it OK with password `password`; 7-Zip reports unsupported method like the other compressed 1.54 fixtures. |
 | `fixtures/1.54/random.rar` + `.r00`/`.r01` | Lists first volume only for metadata checks | Extracts/tests OK across all volumes | Extracts/tests OK across all volumes | Full expected payload is represented by `expected/random.manifest.tsv`. |
+| `fixtures/2.02/rar202-comment-nopsw.rar` / `rar202-comment-psw.rar` | Unencrypted fixture tests OK; encrypted compressed fixture reports unsupported method | Both test OK; encrypted fixture requires password `password` | Both test OK; encrypted fixture requires password `password` | Use for old-format main-header comment extension CRC boundary and RAR 2.0 `CRYPT_RAR20` encrypted compressed members. |
+| `fixtures/1.5-4.x/third_party/libarchive_rar4_mixed_encrypted.rar` | Stored members extract; compressed encrypted members report unsupported method | Member `b.txt` tests OK with password `password`; member `d.txt` fails CRC/password | Member `b.txt` tests OK with password `password`; member `d.txt` fails CRC/password | Use only `b.txt` as the positive oracle (`This is from b.txt`, CRC32 `0xa9fa1485`). |
+| `fixtures/1.5-4.x/third_party/junrar/rar4-*.rar` | Compressed encrypted members report unsupported method | Tests OK with documented passwords | Tests OK with documented passwords | Tiny RAR4 password oracles covering per-file encryption, header encryption, and compact Unicode filenames. |
+| `fixtures/1.5-4.x/third_party/node-unrar-js/file_enc_by_name_unknown_password.rar` | Stored member extracts; compressed encrypted members report unsupported method | Stored member tests OK; encrypted-member passwords unknown | Stored member tests OK; encrypted-member passwords unknown | Use for visible-name metadata, stored `1File.txt` payload, and negative password handling only. Local corpus and upstream fixture-source audits found no password hints. |
+| `fixtures/1.5-4.x/third_party/sharpcompress_rar4_encrypted_files_only.rar` | Compressed encrypted members report unsupported method | Tests OK with password `test` | Tests OK with password `test` | Whole-archive RAR4 per-file encryption fixture with compact Unicode filename `тест.txt`. |
 | `fixtures/rarvm/archives*/` | Lists RAR3 archives, extraction reports unsupported method for tested fixtures | Extracts/tests OK for RAR 3.93 sample | Extracts/tests OK for RAR 3.93 sample | These fixtures are primarily for VM bytecode capture and source-payload comparison. |
 | RAR 5.0/7.0 writer smoke tests | Useful public reader oracle | Too old | Too old for RAR 5.0/7.0 | Use a modern public reader when RAR5/7 fixture output exists. |
 

@@ -277,7 +277,7 @@ compression-info) selects the decompressor:
 |--------|---------|-------|
 | 13 | Unpack13 | RAR 1.3/1.4. Adaptive Huffman. (Wire byte = `2`; see `RAR13_FORMAT_SPECIFICATION.md` §5.) |
 | 15 | Unpack15 | RAR 1.5. Short-distance LZ with Huffman. |
-| 20 | Unpack20 | RAR 2.0. Block-structured LZ. |
+| 20 | Unpack20 | RAR 2.0. Block-structured LZ plus per-block audio mode. |
 | 26 | Unpack20 | RAR 2.x compression for files larger than 2 GB. Same codec as `UnpVer = 20`; the higher version number lets older readers reject what they can't size. (Audio mode is per-block via bit 15 of the block header — not UnpVer-gated.) |
 | 29 | Unpack29 | RAR 2.9/3.x/4.x. LZ + optional PPMd + RARVM filters. |
 | 36 | Unpack29 (extended dict) | RAR 3.0 experimental; treat as 29. |
@@ -351,6 +351,12 @@ After extraction, the reader computes the file's hash:
 Hash mismatch means "file is corrupt" — report and either discard
 the extraction or keep it with a warning, per user policy. Don't
 silently accept.
+
+For encrypted RAR 1.5–4.x file data, a decompressor error or CRC32
+mismatch after decrypting with a user-supplied password should be reported as
+"wrong password or corrupt encrypted data". These formats have no explicit
+per-file password-check field, so the reader cannot reliably distinguish the
+two cases. Missing password is a separate "password required" condition.
 
 ## 7. Encrypted-archive read flow
 
@@ -504,9 +510,13 @@ significant archive:
       format version.
 - [ ] Unknown block skipping via HeadSize.
 - [ ] Unpack15/20/29/50 decompressors — skip Unpack13 if RAR 1.3
-      archives aren't in scope.
+      archives aren't in scope. Current `rars` status: Unpack50 covers
+      non-filtered RAR5 LZ fixtures, all four RAR5 fixed filters, and
+      single-archive RAR5 solid state, plus the promoted compressed RAR5
+      multivolume fixture; RAR5 solid-across-volume coverage and RAR7
+      distance-table expansion are still open.
 - [ ] Per-file CRC32 verification.
-- [ ] BLAKE2sp verification for RAR 5.0.
+- [x] BLAKE2sp verification for RAR 5.0.
 - [ ] Per-version encryption (at least RAR 5.0 AES-256 CBC +
       PBKDF2 is table-stakes; older variants optional).
 - [ ] Solid-mode support (no file-boundary state reset for LZ state).

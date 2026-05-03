@@ -625,6 +625,20 @@ emit this block type.
 follows at offset `+13`, occupying `HEAD_SIZE - 13` bytes. Decoders
 inflate it with the codec selected by `UNP_VER` / `METHOD` and verify
 `CRC32(unpacked_text) & 0xFFFF == COMM_CRC`.
+Although `HEAD_SIZE` includes the payload, `HEAD_CRC` is computed over
+only the 13-byte `COMM_HEAD` structure and excludes the comment payload.
+
+Baseline RAR 1.5 writers may emit an archive comment by setting
+`MHD_COMMENT` on the main header and writing a standalone `COMM_HEAD`
+immediately after it. The simplest valid form stores the text directly:
+`UNP_VER = 15`, `METHOD = 0x30`, `UNP_SIZE = payload length`, and
+`COMM_CRC = CRC32(payload) & 0xffff`.
+
+Old-style file comments use `FHD_COMMENT` (`0x0008`) on the file header. In
+the stored form, the post-name extension contains a little-endian `uint16`
+comment length followed by that many raw comment bytes. The file `HEAD_CRC`
+is computed only through the fixed file-header/name/salt area and excludes
+this post-name comment extension.
 
 ---
 

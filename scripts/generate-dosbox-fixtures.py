@@ -6,9 +6,11 @@ Covers two distinct gaps from `doc/IMPLEMENTATION_GAPS.md`:
    solid, multi-volume, comment, directory entry, SFX with RSFX marker.
    Uses the extracted `RAR.EXE` from RAR1_402.EXE (1994-03-20).
 
-2. **Unpack20 audio** — RAR 2.50 audio mode (`-m5 -mm`) producing per-block
-   audio bit + per-channel MD[] Huffman tables.  Uses the DOS RAR.EXE from
-   the rar250.exe SFX (extracted earlier under `research/re/rar250/`).
+2. **Unpack20 multimedia switch contrast** — RAR 2.50 `-m5 -mm` inputs that
+   exercise the Unpack20 container path. The current committed `AUDIO.RAR`
+   starts with table-read peek `0x0040`, so it is an LZ block, not proof of
+   the audio predictor path. Uses the DOS RAR.EXE from the rar250.exe SFX
+   (extracted earlier under `research/re/rar250/`).
 
 DOSBox-X is invoked with `-time-limit` (clean self-termination, no SIGTERM
 popup) and an `exit` line in the autoexec.  All commands run from a
@@ -229,7 +231,7 @@ def gen_rar250_fixtures():
         pcm += struct.pack("<HH", L, R)
     (work / "PCM_LR.WAV").write_bytes(bytes(pcm))
 
-    # Plain text input as a contrast (LZ-only, audio mode shouldn't engage).
+    # Plain text input as a contrast (LZ-only; multimedia mode should not win).
     (work / "PLAIN.TXT").write_bytes(b"Hello text not audio.\r\n" * 100)
 
     # Multi-file input for solid-state coverage. The files deliberately share
@@ -255,7 +257,7 @@ def gen_rar250_fixtures():
 
     batch = (
         "@echo off\r\n"
-        # -m5 = max compression, -mm = enable multimedia (audio) compression
+        # -m5 = max compression, -mm = ask the encoder to test multimedia mode.
         "rar a -m5 -mm AUDIO.RAR PCM_LR.WAV\r\n"
         # contrast: same options on text input (encoder should still detect non-audio)
         "rar a -m5 -mm AUTOREJ.RAR PLAIN.TXT\r\n"

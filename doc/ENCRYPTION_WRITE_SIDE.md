@@ -61,9 +61,8 @@ A pure XOR stream cipher: `*Data ^= keystream_byte`. XOR is **self-inverse**
 
 ### Key init
 
-Verified against `_refs/unrar/crypt1.cpp` (`SetKey15`). Uses the IEEE 802.3
-CRC32 of the password as a seed, plus per-byte mixing of the password against
-the same CRC32 lookup table.
+Historical RAR 1.5 readers use the IEEE 802.3 CRC32 of the password as a seed,
+plus per-byte mixing of the password against the same CRC32 lookup table.
 
 ```
 def set_key_15(password):
@@ -101,8 +100,22 @@ def crypt15(Key, data):
 
 Where `rotr16(x, 1) = ((x >> 1) | (x << 15)) & 0xFFFF`.
 
-Encrypt and decrypt are the same routine. Verified against `Crypt15` in
-`_refs/unrar/crypt1.cpp`.
+Encrypt and decrypt are the same routine.
+
+For split RAR 1.5 file members, each volume fragment is a separate file block
+with `FHD_PASSWORD` set, but the cipher stream is continuous across the logical
+packed member. Initialize CRYPT_RAR15 once from the password, encrypt the whole
+packed stream, then split the encrypted bytes across volume fragments. Readers
+concatenate the encrypted fragments first, decrypt with one CRYPT_RAR15 stream,
+then feed the resulting logical packed stream to stored or Unpack15 decoding.
+
+### Test vector
+
+Password bytes are legacy C-string bytes: stop at the first `0x00` byte.
+
+| Password | Plaintext | Ciphertext |
+|---|---|---|
+| `password` | `68 65 6c 6c 6f 20 77 6f 72 6c 64` (`hello world`) | `2b b9 f3 9c 41 a6 aa e7 1a 7a 7b` |
 
 Security: also broken (CRC-32-derived keystream), but less trivially than
 RAR 1.3. Do not use for anything real.
@@ -820,6 +833,12 @@ works the same way but against the decrypted *file data*'s CRC (the
 password without decompressing by reading the first AES block of the
 encrypted data stream — but can only validate it after the full stream
 is decrypted and CRC'd.
+
+For readers, a decompressor failure or CRC mismatch after decrypting
+per-file encrypted RAR 1.5/2.0/3.x/4.x data is best reported as "wrong
+password or corrupt encrypted data". There is no wire-level signal that
+distinguishes those outcomes. A missing password is separate and should stop
+before any decrypt attempt.
 
 **Why there's no explicit check in 3.x/4.x.** The format predates the
 "offer password-check without full decrypt" UX pattern. When WinRAR

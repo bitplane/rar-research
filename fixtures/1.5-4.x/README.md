@@ -20,9 +20,11 @@ extended-time blocks landed in RAR 4.x).
 ├── rar300/           (archives produced by RAR 3.00)
 │   ├── *.rar
 │   └── expected/MANIFEST.tsv + per-archive `.lt.txt` listings
-└── rar420/           (archives produced by RAR 4.20)
-    ├── *.rar
-    └── expected/MANIFEST.tsv + per-archive `.lt.txt` listings
+├── rar420/           (archives produced by RAR 4.20)
+│   ├── *.rar
+│   └── expected/MANIFEST.tsv + per-archive `.lt.txt` listings
+└── third_party/      (small externally sourced edge cases with documented
+                      provenance and focused oracle use)
 ```
 
 ## Coverage
@@ -46,14 +48,24 @@ extended-time blocks landed in RAR 4.x).
 | `ext_time_rar420.rar` | `-tsm,c,a` | File header carries `LHD_EXTTIME (0x1000)` plus the extended-time block (mtime + ctime + atime nibble groups). Each time gets a 4-bit flag nibble followed by 0..3 bytes of nanosecond precision per `RAR15_40_FORMAT_SPECIFICATION.md` §12. Verified: byte at offset 0x17 of the file header has `0x10` set. |
 | `header_encrypted_rar420.rar` | `-hppassword` | RAR 4.20 cross-version of `-hp`. Same wire format as the `rar300` variant; included for cross-encoder coverage so a reader test can detect any 4.20-only flag-bit drift. |
 
+### Third-party edge cases (`third_party/`)
+
+| Fixture | Source | Spec exercise |
+|---------|--------|---------------|
+| `libarchive_rar4_mixed_encrypted.rar` | libarchive `test_read_format_rar4_encrypted.rar` | Mixed stored and encrypted-compressed RAR4 members. With password `password`, historical RAR 3.93 validates `b.txt` (`This is from b.txt`, CRC32 `0xa9fa1485`). The later encrypted compressed member `d.txt` fails under RAR 3.93 with a CRC/password error, so tests should use this fixture as a focused positive oracle for `b.txt`, not as a whole-archive success case. SHA-256: `c30dc6d10e59aaab1c863afa469d188c644a22d67d6e50ac7ca887e520f5fc8b`. |
+| `junrar/rar4-password-junrar.rar` | junrar `password/rar4-password-junrar.rar` | Tiny RAR4 per-file encrypted compressed member. Password `junrar`; plaintext is `file1\n`, CRC32 `0xe229f704`. |
+| `junrar/rar4-encrypted-junrar.rar` | junrar `password/rar4-encrypted-junrar.rar` | Tiny RAR4 header-encrypted archive with the same `file1.txt` payload. Password `junrar`. |
+| `junrar/rar4-only-file-content-encrypted.rar` | junrar `password/rar4-only-file-content-encrypted.rar` | RAR4 per-file encrypted member with compact Unicode filename `新建文本文档.txt`. Password `test`; plaintext is `aaaaaaaaaa`, CRC32 `0x4c11cdf0`. |
+| `node-unrar-js/file_enc_by_name_unknown_password.rar` | node-unrar-js `FileEncByName.rar` | Mixed RAR4 fixture with visible names, one unencrypted stored member (`1File.txt` → `1File`, CRC32 `0x578a2019`), and two encrypted compressed members (`2中文.txt`, `3Sec.txt`) whose passwords are unknown. Local and upstream fixture-source audits found no password hints. Use for metadata, stored-member, and negative password behaviour only. SHA-256: `54bd3e3eb16ed6e40b6d305ddb7eec93886246a76716d585d0b187b66712c026`. |
+| `sharpcompress_rar4_encrypted_files_only.rar` | SharpCompress `Rar.encrypted_filesOnly.rar` | Whole-archive RAR4 per-file encryption fixture. Password `test`; contains encrypted compressed `exe\test.exe`, `jpg\test.jpg`, compact Unicode `тест.txt`, and three directories. RAR 3.93 tests it OK. SHA-256: `52c0d575e01750ae643c65866b5e06e67773a0aed5edea6b2b04e7de14a784a2`. |
+
 ## Coverage gaps not generated
 
-- **`FHD_UNICODE` Form 1** (compact Unicode filename encoding): wine on
-  Linux hands cp437-encoded `argv` to `Rar.exe`, which loses CJK characters
-  and maps Latin-1 to its cp437 equivalents — so RAR's encoder sees a
-  "fully representable" filename and skips the Unicode form. Both RAR 3.00
-  and RAR 4.20 confirmed this behaviour. Needs either a real Windows host
-  or wine configured with a UTF-8 ANSI codepage.
+- **Additional `FHD_UNICODE` Form 1 encoder cases** (compact Unicode filename
+  encoding): the junrar third-party fixture above covers read-side CJK compact
+  name decoding. Wine on Linux still makes controlled WinRAR-authored write-side
+  fixtures difficult because it hands cp437-encoded `argv` to `Rar.exe`, which
+  loses CJK characters and maps Latin-1 to its cp437 equivalents.
 - **`FHD_LARGE`** (>4 GiB file size, with `HIGH_PACK_SIZE`/`HIGH_UNP_SIZE`
   uint32 pair): requires ≥4 GiB of input data. Not generated.
 - **`HEAD3_AV` / `HEAD3_SIGN`** (authenticity verification): the WinRAR
