@@ -398,6 +398,7 @@ The minimum oracle for an encoder/decoder pair, per format version:
 | RAR 3.x/4.x AES + Unicode names | RAR4 compact Unicode filename | Decode `fixtures/1.5-4.x/third_party/junrar/rar4-only-file-content-encrypted.rar` with password `test`; filename decodes to `新建文本文档.txt`, plaintext is `aaaaaaaaaa`, CRC32 `0x4c11cdf0`; RAR 3.93 validates it |
 | RAR 3.x/4.x AES + Unicode names | RAR4 encrypted file set | Decode `fixtures/1.5-4.x/third_party/sharpcompress_rar4_encrypted_files_only.rar` with password `test`; file CRC32 values are `0xcfb109c8`, `0x088814e3`, and `0x9bd160fa`; compact Unicode filename decodes to `тест.txt`; RAR 3.93 validates it |
 | RAR 3.x/4.x AES + visible names | RAR4 mixed unknown-password sample | Parse `fixtures/1.5-4.x/third_party/node-unrar-js/file_enc_by_name_unknown_password.rar`; names decode as `1File.txt`, `2中文.txt`, `3Sec.txt`; first member is unencrypted stored bytes `1File` with CRC32 `0x578a2019`; encrypted members are negative/password-behaviour only until their passwords are known. Local and upstream fixture-source audits found no password hints |
+| RAR 1.5–4.x `FHD_LARGE` | synthetic high-size metadata | In `rars`, `parses_fhd_large_high_size_fields_from_file_header` combines `HIGH_PACK_SIZE`/`HIGH_UNP_SIZE` with the low size fields, and `fhd_large_archive_extent_uses_high_packed_size_without_underflowing` proves a truncated large member with low packed size zero returns `TooShort` rather than using only the low 32-bit `ADD_SIZE`. A real >4 GiB public-reader fixture is still deferred. |
 | RAR 3.x RARVM | stock filter bytecode blobs | Verify `fixtures/rarvm/captured-blobs.md` length + CRC32 + XOR checks |
 | RAR 3.x RARVM | historical encoder matrix | Decode all archives under `fixtures/rarvm/archives*/`; extracted bytes match `fixtures/rarvm/sources/` |
 | RAR 1.5 writer | store-only round trip | `rars` builds RAR 1.5 stored archives through both `ArchiveWriter::write_rar15_stored` and the lower-level format writer, and the CLI creates one via `rars a --format rar15 --store`; the RAR 1.5 reader parses the emitted main/file headers, verifies header CRCs and file CRC32 values, and extracts the original bytes |
@@ -408,20 +409,22 @@ The minimum oracle for an encoder/decoder pair, per format version:
 | RAR 1.5 writer | old-numbered multivolume round trip | `rars` builds stored and compressed RAR 1.5 old-numbered volume sets through the lower-level format writer and CLI (`rars a --format rar15 --volume-size N`, with `--store` for stored output); the first main header carries `MHD_VOLUME | MHD_FIRSTVOLUME`, file headers carry `FHD_SPLIT_BEFORE`/`FHD_SPLIT_AFTER` as appropriate, and `extract_volumes` reassembles and verifies the original bytes |
 | RAR 1.5 writer | per-file encryption round trip | `rars` builds encrypted RAR 1.5 stored and compressed archives using `CRYPT_RAR15`; file headers carry `FHD_PASSWORD`, extraction without a password reports `NeedPassword`, wrong compressed passwords report corrupt data, and extraction with the correct password verifies file CRC32 values. The CLI path is covered by `rars a --password pass --format rar15` |
 | RAR 1.5 writer | encrypted old-numbered multivolume round trip | `rars` builds encrypted stored and compressed split sets; every split file header carries `FHD_PASSWORD`, but CRYPT_RAR15 state is initialized once for the logical packed stream before it is split across volumes. Extraction without a password reports `NeedPassword`, wrong compressed passwords report corrupt data, and extraction with the correct password reassembles, decrypts, and verifies the original bytes. The CLI path is covered by `rars a --password pass --format rar15 --volume-size N` |
-| RAR 1.5–4.x | single file, all methods (0x30–0x35) | Our output decodes via public RAR reader |
-| RAR 1.5–4.x | multi-file, solid | Our output decodes via public RAR reader; CRCs match per file |
-| RAR 1.5–4.x | multi-volume | Our split output joins and extracts via public RAR reader |
+| RAR 1.5 writer | public-reader oracle output | Decode `fixtures/1.5-4.x/rars-generated/*.rar` plus their `.r00`/`.r01` companions; WinRAR/UnRAR 4.20 validates stored, compressed, solid, encrypted (`-ppass`), archive/file comments, stored split, and encrypted compressed split output. Crate fixtures mirror the same files under `rar15_40/rars_generated/` and pin both decoded payloads and fixture bytes. |
 | RAR 2.0 | encrypted files (`-p`) | Decode `fixtures/2.02/rar202-comment-psw.rar` with password `password`; `FILE1.TXT` is `file1\r\n`, `FILE2.TXT` is `file2\r\n`, and both CRC32 fields match |
 | RAR 2.0 | wrong password | Decode `fixtures/2.02/rar202-comment-psw.rar` with a wrong password; reader reports wrong password or corrupt encrypted data |
 | RAR 3.x/4.x | encrypted files (`-p`) | Decode `fixtures/1.5-4.x/rar300/encrypted_per_file_rar300.rar` with password `password`; `hello.txt` is `Hello, RAR 3.x fixture world.\n` and CRC32 is `0xa538535e` |
 | RAR 3.x/4.x | wrong password | Decode the RAR 3.x/4.x encrypted fixtures above with a wrong password; reader reports wrong password or corrupt encrypted data |
 | RAR 4.x | encrypted compressed member (`-p`) | Decode member `b.txt` from `fixtures/1.5-4.x/third_party/libarchive_rar4_mixed_encrypted.rar` with password `password`; plaintext is `This is from b.txt` and CRC32 is `0xa9fa1485`. Do not use this fixture as a whole-archive oracle: member `d.txt` fails under historical RAR 3.93. |
+| RAR 3.x/4.x | encrypted old-numbered multi-volume (`-p -v -vn`) | Decode `fixtures/1.5-4.x/rar300/encrypted_multivol_rar300.rar` + `.r00` with password `password`; both split file headers carry `LHD_PASSWORD` and the same salt, packed fragments concatenate to one AES-CBC stream, and extracted `bigtext_64k.bin` has CRC32 `0xddc95682`. WinRAR/UnRAR 3.00 validates the set. |
+| RAR 3.x/4.x | encrypted new-numbered multi-volume (`-p -v`) | Decode `fixtures/1.5-4.x/rar300/encrypted_newnaming_rar300.part01.rar` + `.part02.rar` with password `password`; both main headers carry `MHD_NEWNUMBERING`, split file headers carry `LHD_PASSWORD` and the same salt, and extracted `bigtext_64k.bin` has CRC32 `0xddc95682`. WinRAR/UnRAR 3.00 validates the set. |
 | RAR 3.x/4.x | encrypted headers (`-hp`) | Decode `fixtures/1.5-4.x/rar300/header_encrypted_rar300.rar` and `fixtures/1.5-4.x/rar420/header_encrypted_rar420.rar` with password `password`; decrypted file header names `hello.txt` and extracted bytes match CRC32 `0xa538535e` |
+| RAR 3.x/4.x | encrypted headers plus old-numbered multi-volume (`-hp -v -vn`) | Decode `fixtures/1.5-4.x/rar300/header_encrypted_multivol_rar300.rar` + `.r00` with password `password`; each volume repeats `MHD_PASSWORD`, split file headers decrypt before volume reassembly, and extracted `bigtext_64k.bin` has CRC32 `0xddc95682`. WinRAR/UnRAR 3.00 validates the set. |
+| RAR 3.x/4.x | encrypted headers plus new-numbered multi-volume (`-hp -v`) | Decode `fixtures/1.5-4.x/rar300/header_encrypted_newnaming_rar300.part01.rar` + `.part02.rar` with password `password`; both main headers carry `MHD_NEWNUMBERING`, split file headers decrypt before volume reassembly, and extracted `bigtext_64k.bin` has CRC32 `0xddc95682`. WinRAR/UnRAR 3.00 validates the set. |
+| RAR 3.x/4.x | new-numbered multi-volume (`.partNN.rar`) | Decode `fixtures/1.5-4.x/rar300/multivol_newnaming_rar300.part01.rar` + `.part02.rar`; both main headers carry `MHD_NEWNUMBERING`, and extracted `bigtext_64k.bin` has CRC32 `0xddc95682`. |
 | RAR 2.9–4.x | PPMd block (UnpVer = 29, RAR `-mc` switch) | Round-trip of large text input. Method byte (`0x30..0x35`) is compression *level*, not codec selector — PPMd is requested via `-mc<MODE>:<MEM>` independent of method byte. |
 | RAR 1.5–4.x | with recovery record | `rar r` can repair after bit-flip in data |
 | RAR 5.0 | basic compressed methods | `rars` decodes the WinRAR-authored `m1_fastest.rar`, `m3_default.rar`, and `m5_max.rar` fixtures copied from `fixtures/5.0/`; each validates with the file hash/CRC after Unpack50 LZ decoding |
 | RAR 5.0 | solid compressed archive | `rars` decodes the WinRAR-authored `solid.rar` fixture copied from `fixtures/5.0/`; decoder tables, repeat distances, last length, and output history are carried across files in one solid archive |
-| RAR 5.0 | all methods + dictionary sizes | Our output decodes via public RAR reader |
 | RAR 5.0 | all 4 filter types | `rars` decodes the WinRAR-authored `filter_delta.rar`, `filter_e8.rar`, `filter_e8e9.rar`, and `filter_arm.rar` fixtures copied from `fixtures/5.0/`; each validates with the file hash/CRC after Unpack50 decoding plus the fixed filter inverse |
 | RAR 5.0 | compressed multi-volume | `rars` decodes the WinRAR-authored `multivol.part1.rar` + `.part2.rar` + `.part3.rar` set copied from `fixtures/5.0/`; split fragments are chained as one logical packed stream and the final BLAKE2sp file hash validates |
 | RAR 5.0 | encrypted | Round-trip against both `-p` and `-hp` modes |
@@ -429,15 +432,22 @@ The minimum oracle for an encoder/decoder pair, per format version:
 | RAR 5.0 | with RR | `rar r` repairs after bit-flip |
 
 Use `scripts/verify-fixtures.py` for the committed fixture invariants. Without
-an extractor it verifies README SHA tables, expected-payload hashes, RARVM
-bytecode fingerprints, and capture logs. With historical UnRAR it also extracts
-the RAR 1.402 and RAR 1.54 fixtures and compares payload bytes/manifests:
+an extractor it verifies README SHA tables, the `rars-generated` writer-oracle
+SHA table, generated-fixture manifests, RAR 3.x/4.x `rar lt` listing oracles,
+RARVM bytecode fingerprints and capture logs, RAR 5.0 inline-RR chunk layout,
+WinRAR 2.90 signature-block shape, and RAR 1.40 AV-in-main-header layout. With
+historical UnRAR it also extracts the RAR 1.402 and RAR 1.54 fixtures and
+compares payload bytes/manifests, then runs `unrar t` over the generated
+RAR 3.x/4.x primary archives with passwords where required:
 
 ```
 scripts/verify-fixtures.py \
   --wine-prefix _refs/wineprefixes/winrar300 \
   --unrar-exe "_refs/wineprefixes/winrar300/drive_c/Program Files (x86)/WinRAR/UnRAR.exe"
 ```
+
+For the public-reader compatibility matrix below, repeat the same command with
+`_refs/wineprefixes/winrar420` to exercise historical UnRAR 4.20.
 
 "Our output decodes via public RAR reader" is strong — it catches any wire-format
 divergence. Byte-exact comparison against WinRAR's output is much
@@ -455,35 +465,51 @@ Before using the fixture set as an implementation oracle, run these mechanical
 checks:
 
 1. Run `scripts/verify-fixtures.py` to verify every SHA-256 listed in each
-   fixture README:
+   fixture README/table:
    - `fixtures/1.402/README.md`
    - `fixtures/1.54/README.md`
    - `fixtures/rarvm/README.md`
-2. Decode all `fixtures/1.402/*.rar` archives and compare extracted bytes
+   - `fixtures/1.5-4.x/rars-generated/README.md`
+2. Verify generated fixture inventories:
+   - every `fixtures/**/expected/MANIFEST.tsv` row points to a committed
+     artifact with the recorded byte size.
+   - every generated RAR 3.x/4.x primary archive has a `rar lt` listing oracle
+     with the expected banner, table shape, member/service-block names, and
+     encryption markers.
+3. Verify structural non-extraction fixtures:
+   - RAR 5.0 inline recovery-record chunks in `fixtures/5.0/rr_inline/`
+   - WinRAR 2.90 `HEAD3_SIGN` shape fixture
+   - RAR 1.40 AV-in-main-header fixture pair.
+4. Decode all `fixtures/1.402/*.rar` archives and compare extracted bytes
    against `fixtures/1.402/expected/README`; use password `password` for the
    encrypted archive.
-3. Decode the RAR 1.54 fixtures:
+5. Decode the RAR 1.54 fixtures:
    - `readme_154_normal.rar`
    - `readme_154_store_solid.rar`
    - `readme.EXE`
    - `doc_154_best.rar`
    - `random.rar` with `random.r00` and `random.r01` present.
-4. Compare the extracted `README.md` from `readme_154_normal.rar`,
+6. Compare the extracted `README.md` from `readme_154_normal.rar`,
    `readme_154_store_solid.rar`, and `readme.EXE` against
    `fixtures/1.54/expected/README.md`.
-5. For `doc_154_best.rar` and the `random.*` multi-volume set, verify full
+7. For `doc_154_best.rar` and the `random.*` multi-volume set, verify full
    extraction against:
    - `fixtures/1.54/expected/doc_154_best.manifest.tsv`
    - `fixtures/1.54/expected/random.manifest.tsv`
-6. For `fixtures/rarvm/captured-blobs.md`, recompute `len`, CRC32, and XOR for
+8. Run historical `unrar t` over the generated RAR 3.x/4.x primary archives
+   from:
+   - `fixtures/1.5-4.x/rar300/expected/MANIFEST.tsv`
+   - `fixtures/1.5-4.x/rar420/expected/MANIFEST.tsv`
+   Use password `password` for encrypted/header-encrypted cases.
+9. For `fixtures/rarvm/captured-blobs.md`, recompute `len`, CRC32, and XOR for
    each byte array and compare against the table in §12.
-7. For each `fixtures/rarvm/capture-logs/*.jsonl` entry, verify:
+10. For each `fixtures/rarvm/capture-logs/*.jsonl` entry, verify:
    - `xor_ok == true`
    - `code_size` matches the stock-filter length table
    - `crc32` matches the stock-filter fingerprint table
    - `code_hex` equals the corresponding byte array in
      `fixtures/rarvm/captured-blobs.md`.
-8. Decode all archives under `fixtures/rarvm/archives/`,
+11. Decode all archives under `fixtures/rarvm/archives/`,
    `fixtures/rarvm/archives-rar300/`, and `fixtures/rarvm/archives-rar420/`;
    compare each extracted file with the same basename under
    `fixtures/rarvm/sources/`.
@@ -506,6 +532,7 @@ Observed local reader behavior for the committed fixtures:
 | `fixtures/1.5-4.x/third_party/junrar/rar4-*.rar` | Compressed encrypted members report unsupported method | Tests OK with documented passwords | Tests OK with documented passwords | Tiny RAR4 password oracles covering per-file encryption, header encryption, and compact Unicode filenames. |
 | `fixtures/1.5-4.x/third_party/node-unrar-js/file_enc_by_name_unknown_password.rar` | Stored member extracts; compressed encrypted members report unsupported method | Stored member tests OK; encrypted-member passwords unknown | Stored member tests OK; encrypted-member passwords unknown | Use for visible-name metadata, stored `1File.txt` payload, and negative password handling only. Local corpus and upstream fixture-source audits found no password hints. |
 | `fixtures/1.5-4.x/third_party/sharpcompress_rar4_encrypted_files_only.rar` | Compressed encrypted members report unsupported method | Tests OK with password `test` | Tests OK with password `test` | Whole-archive RAR4 per-file encryption fixture with compact Unicode filename `тест.txt`. |
+| `fixtures/1.5-4.x/rar300/` + `rar420/` generated set | Useful for metadata listing | Primary archives test OK; encrypted/header-encrypted cases require password `password` | Primary archives test OK; encrypted/header-encrypted cases require password `password` | `scripts/verify-fixtures.py --unrar-exe ...` runs `unrar t` over the generated primary archives and first parts listed in the manifests. |
 | `fixtures/rarvm/archives*/` | Lists RAR3 archives, extraction reports unsupported method for tested fixtures | Extracts/tests OK for RAR 3.93 sample | Extracts/tests OK for RAR 3.93 sample | These fixtures are primarily for VM bytecode capture and source-payload comparison. |
 | RAR 5.0/7.0 writer smoke tests | Useful public reader oracle | Too old | Too old for RAR 5.0/7.0 | Use a modern public reader when RAR5/7 fixture output exists. |
 

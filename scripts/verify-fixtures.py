@@ -76,6 +76,31 @@ def verify_readme_sha_tables(errors: list[str]) -> None:
         ok(f"{readme.relative_to(ROOT)} sha256 table ({count} files)")
 
 
+def verify_markdown_sha_tables(errors: list[str]) -> None:
+    """Check markdown tables with `File` / `SHA-256` columns."""
+    for readme in [
+        ROOT / "fixtures/1.5-4.x/rars-generated/README.md",
+    ]:
+        count = 0
+        for line in readme.read_text().splitlines():
+            match = re.match(r"^\|\s+`(.+?)`\s+\|\s+`([0-9a-f]{64})`\s+\|$", line)
+            if not match:
+                continue
+            rel, expected = match.groups()
+            count += 1
+            path = readme.parent / rel
+            if not path.exists():
+                fail(errors, f"{readme}: missing {rel}")
+                continue
+            actual = sha256_file(path)
+            if actual != expected:
+                fail(errors, f"{readme}: {rel} sha256 {actual} != {expected}")
+        if count == 0:
+            fail(errors, f"{readme.relative_to(ROOT)} has no markdown SHA-256 rows")
+        else:
+            ok(f"{readme.relative_to(ROOT)} markdown sha256 table ({count} files)")
+
+
 def load_rarvm_blobs() -> dict[str, bytes]:
     text = (ROOT / "fixtures/rarvm/captured-blobs.md").read_text()
     code = text.split("```python", 1)[1].split("```", 1)[0]
@@ -189,6 +214,78 @@ def verify_fixture_manifests(errors: list[str]) -> None:
                     f"{manifest.relative_to(ROOT)}:{line_no}: {name} size {actual_size} != {expected_size}",
                 )
     ok(f"generated fixture manifests ({checked} files, {rows} rows)")
+
+
+def listing_oracle_name(artifact_name: str) -> str | None:
+    """Return the expected `rar lt` listing filename for generated RAR3/4 rows."""
+    part_match = re.match(r"^(.+)\.part[0-9]+\.rar$", artifact_name)
+    if part_match:
+        return f"{part_match.group(1)}.rar.lt.txt"
+    if re.match(r"^.+\.r[0-9][0-9]$", artifact_name, flags=re.IGNORECASE):
+        return None
+    if artifact_name.lower().endswith(".rar"):
+        return f"{artifact_name}.lt.txt"
+    return None
+
+
+RAR3X_LISTING_TOKENS = {
+    "encrypted_multivol_rar300.rar.lt.txt": ["*bigtext_64k.bin", "Volume", "m3b"],
+    "encrypted_newnaming_rar300.rar.lt.txt": ["*bigtext_64k.bin", "part01.rar", "m3b"],
+    "encrypted_per_file_rar300.rar.lt.txt": ["*hello.txt", "A538535E", "m3b"],
+    "header_encrypted_multivol_rar300.rar.lt.txt": ["*bigtext_64k.bin", "Volume", "m3b"],
+    "header_encrypted_newnaming_rar300.rar.lt.txt": ["*bigtext_64k.bin", "part01.rar", "m3b"],
+    "header_encrypted_rar300.rar.lt.txt": ["*hello.txt", "A538535E", "m3b"],
+    "multivol_newnaming_rar300.rar.lt.txt": [" bigtext_64k.bin", "part01.rar", "m3b"],
+    "multivol_oldnaming_rar300.rar.lt.txt": [" bigtext_64k.bin", "Volume", "m3b"],
+    "solid_rar300.rar.lt.txt": ["hello.txt", "tiny.txt", "bigtext_64k.bin", "m3e"],
+    "with_comment_rar300.rar.lt.txt": ["This is the archive comment.", "Data header type: CMT", "hello.txt"],
+    "with_recovery_rar300.rar.lt.txt": ["Recovery record is present", "Data header type: RR", "bigtext_64k.bin"],
+    "ext_time_rar420.rar.lt.txt": ["hello.txt", "A538535E", "m0b"],
+    "header_encrypted_rar420.rar.lt.txt": ["*hello.txt", "A538535E", "m3b"],
+}
+
+
+def verify_rar3x_listing_oracles(errors: list[str]) -> None:
+    """Check WinRAR `lt` listings for generated RAR 3.x/4.x fixtures.
+
+    These are not extraction oracles. They pin public-reader-visible metadata
+    such as names, packed sizes, methods, volume naming, and password markers.
+    """
+    checked: set[Path] = set()
+    expected_dirs = [
+        ROOT / "fixtures/1.5-4.x/rar300/expected",
+        ROOT / "fixtures/1.5-4.x/rar420/expected",
+    ]
+    for manifest in [
+        expected_dirs[0] / "MANIFEST.tsv",
+        expected_dirs[1] / "MANIFEST.tsv",
+    ]:
+        expected_dir = manifest.parent
+        for line_no, line in enumerate(manifest.read_text().splitlines(), 1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            artifact_name = line.split("\t", 1)[0]
+            oracle_name = listing_oracle_name(artifact_name)
+            if oracle_name is None:
+                continue
+            oracle = expected_dir / oracle_name
+            if not oracle.exists():
+                fail(errors, f"{manifest.relative_to(ROOT)}:{line_no}: missing listing oracle {oracle.relative_to(ROOT)}")
+                continue
+            checked.add(oracle)
+            text = oracle.read_text(errors="replace")
+            if "RAR 3.00" not in text and "RAR 4.20" not in text:
+                fail(errors, f"{oracle.relative_to(ROOT)}: missing RAR version banner")
+            if "Name" not in text or "Packed" not in text or "Meth" not in text:
+                fail(errors, f"{oracle.relative_to(ROOT)}: missing listing table header")
+            for token in RAR3X_LISTING_TOKENS.get(oracle.name, []):
+                if token not in text:
+                    fail(errors, f"{oracle.relative_to(ROOT)}: missing listing token {token!r}")
+    for expected_dir in expected_dirs:
+        for oracle in sorted(expected_dir.glob("*.lt.txt")):
+            if oracle not in checked:
+                fail(errors, f"{oracle.relative_to(ROOT)}: listing oracle is not referenced by MANIFEST.tsv")
+    ok(f"RAR 3.x/4.x listing oracles ({len(checked)} files)")
 
 
 RR_INLINE_FIXTURES = [
@@ -520,6 +617,48 @@ def verify_extract(
         fail(errors, f"extract failed for {archive.relative_to(ROOT)}: {exc}")
 
 
+def verify_test_archive(
+    errors: list[str],
+    args: argparse.Namespace,
+    archive: Path,
+    password: str | None = None,
+) -> None:
+    command = ["t", "-y"]
+    if password:
+        command.append(f"-p{password}")
+    command.append(archive_arg(args, archive))
+    try:
+        run_unrar(args, command)
+    except subprocess.CalledProcessError as exc:
+        fail(errors, f"test failed for {archive.relative_to(ROOT)}: {exc}")
+
+
+def is_primary_rar3x_artifact(name: str) -> bool:
+    if re.match(r"^.+\.r[0-9][0-9]$", name, flags=re.IGNORECASE):
+        return False
+    part_match = re.match(r"^.+\.part([0-9]+)\.rar$", name, flags=re.IGNORECASE)
+    return part_match is None or part_match.group(1) == "01"
+
+
+def verify_optional_rar3x_tests(errors: list[str], args: argparse.Namespace) -> None:
+    tested = 0
+    for manifest in [
+        ROOT / "fixtures/1.5-4.x/rar300/expected/MANIFEST.tsv",
+        ROOT / "fixtures/1.5-4.x/rar420/expected/MANIFEST.tsv",
+    ]:
+        fixture_dir = manifest.parent.parent
+        for line in manifest.read_text().splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            name = line.split("\t", 1)[0]
+            if not is_primary_rar3x_artifact(name):
+                continue
+            password = "password" if "encrypted" in name else None
+            verify_test_archive(errors, args, fixture_dir / name, password)
+            tested += 1
+    ok(f"optional RAR 3.x/4.x UnRAR test checks ({tested} archives)")
+
+
 def verify_optional_extraction(errors: list[str], args: argparse.Namespace) -> None:
     if not args.unrar_exe:
         print("skip: extraction checks need --unrar-exe")
@@ -567,6 +706,7 @@ def verify_optional_extraction(errors: list[str], args: argparse.Namespace) -> N
                 continue
             if path.stat().st_size != size or crc32_file(path) != crc or sha256_file(path) != sha:
                 fail(errors, f"random volume {name}: manifest mismatch")
+        verify_optional_rar3x_tests(errors, args)
         ok("optional historical UnRAR extraction checks")
     finally:
         shutil.rmtree(temp)
@@ -580,9 +720,11 @@ def main() -> int:
 
     errors: list[str] = []
     verify_readme_sha_tables(errors)
+    verify_markdown_sha_tables(errors)
     verify_committed_expected_payloads(errors)
     verify_rarvm(errors)
     verify_fixture_manifests(errors)
+    verify_rar3x_listing_oracles(errors)
     verify_rr_inline_layout(errors)
     verify_head3_sign_layout(errors)
     verify_rar140_av_layout(errors)

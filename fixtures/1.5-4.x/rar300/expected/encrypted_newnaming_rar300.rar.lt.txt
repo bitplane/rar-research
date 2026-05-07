@@ -2,12 +2,13 @@
 RAR 3.00    Copyright (c) 1993-2002 Eugene Roshal    14 May 2002
 Shareware version         Type RAR -? for help
 
-Archive fixtures/1.5-4.x/rar300/header_encrypted_rar300.rar
+Volume fixtures/1.5-4.x/rar300/encrypted_newnaming_rar300.part01.rar
 
  Name             Size   Packed Ratio  Date   Time     Attr      CRC   Meth Ver
                Host OS    Solid   Old
 -------------------------------------------------------------------------------
-*hello.txt          30       48 100% 27-04-26 06:54   .....A   A538535E m3b 2.9
+*bigtext_64k.bin    65536     8110  --> 03-05-26 10:02   .....A   F6FA8135 m3b 2.9
               Win95/NT       No   No
 -------------------------------------------------------------------------------
-    1               30       48 100%
+    1            65536     8110  12%
+

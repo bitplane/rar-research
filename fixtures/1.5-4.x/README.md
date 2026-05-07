@@ -23,9 +23,17 @@ extended-time blocks landed in RAR 4.x).
 ├── rar420/           (archives produced by RAR 4.20)
 │   ├── *.rar
 │   └── expected/MANIFEST.tsv + per-archive `.lt.txt` listings
+├── rars-generated/   (small `rars` writer outputs validated by UnRAR 4.20)
 └── third_party/      (small externally sourced edge cases with documented
                       provenance and focused oracle use)
 ```
+
+`scripts/verify-fixtures.py` treats each `MANIFEST.tsv` row as a committed
+artifact inventory and treats the RAR 3.x/4.x `rar lt` outputs as listing
+oracles. It checks that primary archives have the expected listing file, that
+no stale listing files are left orphaned, and that the listing content still
+contains the expected version banner, member/service-block names, method
+markers, and encrypted-entry markers.
 
 ## Coverage
 
@@ -35,9 +43,13 @@ extended-time blocks landed in RAR 4.x).
 |---------|----------|---------------|
 | `encrypted_per_file_rar300.rar` | `-ppassword` | Per-file AES-128 encryption (`LHD_PASSWORD = 0x0004`) + RAR 3.x KDF (262144 SHA-1 iterations with the `_rar29` quirk; see `ENCRYPTION_WRITE_SIDE.md` §4). |
 | `header_encrypted_rar300.rar` | `-hppassword` | Whole-archive header encryption: `MainHead` carries `MHD_PASSWORD = 0x0080` and all blocks after the marker are AES-128-CBC encrypted with a per-block IV16 prefix. |
+| `header_encrypted_multivol_rar300.rar` + `.r00` | `-hppassword -v8k -vn` | Header-encrypted old-style multi-volume. Each volume repeats `MHD_PASSWORD`, decrypts its split `FileHead`, and then decrypts the logical packed stream using the file salt from the decrypted header. |
+| `header_encrypted_newnaming_rar300.part01.rar` + `.part02.rar` | `-hppassword -v8k` | Header-encrypted new-style multi-volume. `MainHead` carries `MHD_NEWNUMBERING`; split `FileHead` blocks decrypt before packed-data reassembly. |
 | `with_comment_rar300.rar` | `-zcomment.txt` | Archive comment via the comment subblock. |
 | `with_recovery_rar300.rar` | `-rr10` | 10% Reed–Solomon recovery record. RAR 3.00 emits this as `HEAD3_NEWSUB = 0x7a` with name `"RR"` (RSCoder8), not the older `PROTECT_HEAD = 0x78` (see `INTEGRITY_WRITE_SIDE.md` §3.4). |
 | `multivol_oldnaming_rar300.rar` + `.r00` | `-v8k -vn` | Multi-volume with **old-style naming**: vol 1 = `<base>.rar`, vol 2 = `<base>.r00`, etc. `MainHead` carries `MHD_VOLUME (0x0001)` but **not** `MHD_NEWNUMBERING (0x0010)`. |
+| `encrypted_multivol_rar300.rar` + `.r00` | `-ppassword -v8k -vn` | Encrypted old-style multi-volume. Every split `FileHead` carries `LHD_PASSWORD` and the same salt; AES-CBC decrypts one logical packed stream after concatenating fragments. |
+| `encrypted_newnaming_rar300.part01.rar` + `.part02.rar` | `-ppassword -v8k` | Encrypted new-style multi-volume. `MainHead` carries `MHD_NEWNUMBERING`; every split `FileHead` carries `LHD_PASSWORD` and the same salt. |
 | `multivol_newnaming_rar300.part01.rar` + `.part02.rar` | `-v8k` | Multi-volume with **new-style naming** (RAR 3.0+ default): vol N = `<base>.partNN.rar`. `MainHead` carries `MHD_VOLUME | MHD_NEWNUMBERING`. |
 | `solid_rar300.rar` | `-s` | Solid archive: `MainHead` has `MHD_SOLID (0x0008)` and every `FileHead` after the first carries `LHD_SOLID (0x0010)`. |
 
@@ -47,6 +59,13 @@ extended-time blocks landed in RAR 4.x).
 |---------|----------|---------------|
 | `ext_time_rar420.rar` | `-tsm,c,a` | File header carries `LHD_EXTTIME (0x1000)` plus the extended-time block (mtime + ctime + atime nibble groups). Each time gets a 4-bit flag nibble followed by 0..3 bytes of nanosecond precision per `RAR15_40_FORMAT_SPECIFICATION.md` §12. Verified: byte at offset 0x17 of the file header has `0x10` set. |
 | `header_encrypted_rar420.rar` | `-hppassword` | RAR 4.20 cross-version of `-hp`. Same wire format as the `rar300` variant; included for cross-encoder coverage so a reader test can detect any 4.20-only flag-bit drift. |
+
+### rars-generated writer oracles
+
+These are small RAR 1.5 archives emitted by `rars` and validated with
+WinRAR/UnRAR 4.20. They cover stored, compressed, solid, encrypted,
+archive/file comments, stored split volumes, and encrypted compressed split
+volumes. See `rars-generated/README.md` for exact validation notes and hashes.
 
 ### Third-party edge cases (`third_party/`)
 

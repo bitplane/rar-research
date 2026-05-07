@@ -402,16 +402,24 @@ uses zero padding, not PKCS#7). The plaintext size is implicit — the
 decoder knows how many plaintext bytes to extract from context (file
 size in the header, or header size for encrypted headers).
 
+For split file members, encrypt the logical packed stream once, then split the
+ciphertext across volume fragments. RAR 3.00 old-numbered `-p -v -vn`
+fixtures write the same 8-byte salt in every split `FileHead`; individual
+fragments need not be AES-block aligned, but the concatenated logical packed
+stream is block-aligned.
+
 ### 4.7 Trap: salt reuse across headers
 
-Each encrypted file header carries its own 8-byte salt. The encoder
-**must** generate a fresh random salt for every file header, and must
-**not** reuse the same salt across multiple files — salt reuse lets an
-attacker detect common prefixes, *and* the §4.5 KDF cache means a
-re-used salt yields a cache hit on the receiver: identical salt across
-files implies identical `(AESKey, AESInit)`, which is catastrophic.
-Always generate fresh salt; the read-side cache becomes harmless when
-no two files share salt.
+Each encrypted file member carries its own 8-byte salt. The encoder
+**must** generate a fresh random salt for every independent file member, and
+must **not** reuse the same salt across multiple files — salt reuse lets an
+attacker detect common prefixes, *and* the §4.5 KDF cache means a re-used salt
+yields a cache hit on the receiver: identical salt across files implies
+identical `(AESKey, AESInit)`, which is catastrophic. Split fragments of the
+same logical file are the exception: they repeat the member salt because they
+are continuations of one encrypted packed stream. Always generate fresh salt
+per logical file; the read-side cache becomes harmless when no two independent
+files share salt.
 
 Security: AES-128-CBC with a strong KDF is cryptographically sound. The
 262144-iteration SHA-1 chain (with the `_rar29` quirk) is weaker than

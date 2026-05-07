@@ -3345,6 +3345,18 @@ When a file spans multiple volumes:
 - The file header in the preceding volume has `FHD_SPLIT_AFTER` (`0x0002`) set.
 - The filename must match across volumes.
 
+For encrypted split files, the split fragments are one logical packed stream.
+Readers concatenate the packed bytes in volume order before decryption and
+decompression. This matters for both RAR 1.5 `CRYPT_RAR15` and RAR 3.x/4.x
+AES-CBC: individual fragments do not necessarily align to cipher block
+boundaries. RAR 3.00 `-p -v -vn` fixtures repeat the same file salt in every
+split `FileHead`.
+
+With archive-wide header encryption (`MHD_PASSWORD`, `-hp`), each volume repeats
+the encrypted-main-header state and its split `FileHead` is encrypted like any
+other header in that volume. After decrypting headers with the archive password,
+the packed data still follows the per-file encrypted split rule above.
+
 ---
 
 ## 22. CRC32

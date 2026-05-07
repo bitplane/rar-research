@@ -55,7 +55,7 @@ Per-version inventory (last updated 2026-05-02):
 | `fixtures/1.54/` | WinRAR 1.54 (DOSBox) | Single-file compressed, CRYPT_RAR15 encrypted compressed, solid, multi-file, multi-volume, SFX, plus audio-shaped WAV payloads with Windows long names and DOS 8.3 names. |
 | `fixtures/2.02/` | External `rarfile` corpus | Old-format RAR 2.x main-header comment extension boundary plus RAR 2.0 encrypted compressed members using `CRYPT_RAR20`. |
 | `fixtures/2.50/` | RAR 2.50 (DOSBox-X) | Unpack20 LZ coverage from `-mm` multimedia-switch input, external audio-shaped inputs that still select LZ, explicit LZ contrast, solid carry-over, and larger LZ streams. No committed vintage-encoder archive fixture currently proves a true audio block; `AUDIO.RAR` starts with table-read peek `0x0040`, and `unpack20_audio_text.rar` starts with `0x2221`, so bit 15 is clear in both. `rars` has synthetic one-channel audio coverage at codec level and synthetic in-memory RAR 2.0 archive coverage for channel counts 1, 2, 3, and 4. |
-| `fixtures/1.5-4.x/rar300/` | WinRAR 3.00 (wine) | Per-file `-p` encryption, header `-hp`, comment, recovery record (`HEAD3_NEWSUB "RR"`), multi-volume both old (`.r00`) and new (`.partNN.rar`) naming, solid. |
+| `fixtures/1.5-4.x/rar300/` | WinRAR 3.00 (wine) | Per-file `-p` encryption, header `-hp`, header-encrypted old-numbered multi-volume, comment, recovery record (`HEAD3_NEWSUB "RR"`), multi-volume both old (`.r00`) and new (`.partNN.rar`) naming, encrypted old-numbered multi-volume, solid. |
 | `fixtures/1.5-4.x/rar420/` | WinRAR 4.20 (wine) | EXT_TIME nibble groups, `-hp` cross-version. |
 | `fixtures/1.5-4.x/third_party/` | External corpora | Focused edge-case oracles with documented provenance. Includes the libarchive mixed encrypted RAR4 fixture, where only member `b.txt` is a positive oracle because historical RAR 3.93 validates it while rejecting later member `d.txt`; junrar and SharpCompress RAR4 encrypted/header-encrypted password fixtures; and the node-unrar-js mixed visible-name fixture used only for metadata, stored-member, and negative password behaviour because the encrypted-member passwords are unknown after local and upstream fixture-source audits. |
 | `fixtures/1.5-4.x/` | RAR 2.50 (DOSBox-X) | Two `PROTECT_HEAD` recovery-record fixtures (`rar250_protect_head_rr1.rar`, `…_rr5.rar`) — pin the per-sector tag formula and interleaved-XOR parity in `INTEGRITY_WRITE_SIDE.md §3.4`. |
@@ -170,8 +170,12 @@ project), symbol-rename, dynamic capture via DOSBox-X / wine.
   `Algorithm version` bit set in CompInfo): only triggered when the
   encoder selects a >4 GiB dictionary, which only happens with >4 GiB
   input. WinRAR 7.21 is installed; the constraint is purely fixture-size.
-- **RAR 1.5–4.x `FHD_LARGE`** (>4 GiB single-file size pair, `HIGH_PACK_SIZE`
-  / `HIGH_UNP_SIZE` uint32 pair active): same reason.
+- **RAR 1.5–4.x `FHD_LARGE` public fixture** (>4 GiB single-file size pair,
+  `HIGH_PACK_SIZE` / `HIGH_UNP_SIZE` uint32 pair active): parser semantics are
+  synthetically covered in `rars` — high size fields are combined into 64-bit
+  sizes and the archive extent uses the full packed size, including the
+  low-32-bits-zero case. A real public-reader fixture is still not committed
+  because it requires ≥4 GiB of payload.
 
 ### D. Encoder-internal / not deterministically input-driven
 
@@ -204,12 +208,13 @@ input that happens to trigger an internal threshold.
 ### E. Gated on broader rars encoder coverage
 
 - **Round-trip oracle** (write → read identity, every fixture): the
-  only test that proves an encoder + decoder pair self-consistent. This has
-  started for narrow RAR 1.5 store-only, compressed, solid-compressed,
-  old-numbered multivolume, old-style archive/file comments, and per-file
-  encrypted paths including encrypted split volumes; it still needs
-  public-reader oracle fixtures for generated output and later RAR families
-  before it can act as a broad format oracle.
+  only test that proves an encoder + decoder pair self-consistent. RAR 1.5
+  now has narrow public-reader oracles for store-only, compressed,
+  solid-compressed, old-numbered multivolume, old-style archive/file comments,
+  and CRYPT_RAR15 per-file encryption including encrypted split volumes
+  (`fixtures/1.5-4.x/rars-generated/`, validated with WinRAR/UnRAR 4.20).
+  The broader gap is later writer families: RAR 2.0/2.6 Unpack20, RAR 2.9/3.x
+  Unpack29/PPMd/RARVM, RAR 3.x/4.x AES write-side coverage, and RAR 5+.
 
 ---
 

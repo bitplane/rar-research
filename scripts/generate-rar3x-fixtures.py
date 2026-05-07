@@ -1,9 +1,10 @@
 """Generate RAR 1.5–4.x edge-case fixtures using WinRAR 3.00 and 4.20 under wine.
 
-Closes the "RAR 1.5–4.x: header-encrypted (-hp), FHD_LARGE (>4 GiB),
-FHD_UNICODE Form 1, EXT_TIME nibble groups" line from
-`doc/IMPLEMENTATION_GAPS.md`. We skip the FHD_LARGE case because it requires
-a >4 GiB input file; everything else is a routine archive-creation run.
+Closes routine RAR 1.5–4.x fixture generation for header encryption (`-hp`),
+comments, recovery records, old/new volume naming, encrypted volume sets, and
+EXT_TIME nibble groups. We skip `FHD_LARGE` because it requires a >4 GiB input
+file, and controlled `FHD_UNICODE` Form 1 generation remains unreliable under
+Wine because argv is passed through a legacy codepage.
 
 Two prefixes are exercised:
 - `winrar300/` — RAR 3.00 (May 2002): -hp, -p, comments, RR, multi-vol,
@@ -42,6 +43,14 @@ FIXTURES = [
         ["a", "-m3", "-hppassword", "-ep", "-cfg-", "-idp"],
         ["hello.txt"],
         "Whole-archive header encryption (-hp). MainHead has MHD_PASSWORD (0x0080); all blocks after the marker are AES-128-CBC encrypted with per-block IV16 prefix."),
+    ("rar300", "header_encrypted_multivol_rar300.rar",
+        ["a", "-m3", "-hppassword", "-v8k", "-vn", "-ep", "-cfg-", "-idp"],
+        ["bigtext_64k.bin"],
+        "Header-encrypted multi-volume (-hp + -v8k + -vn). Each volume repeats MHD_PASSWORD and encrypts its split file header; packed data is encrypted with the file salt after header decryption."),
+    ("rar300", "header_encrypted_newnaming_rar300.rar",
+        ["a", "-m3", "-hppassword", "-v8k", "-ep", "-cfg-", "-idp"],
+        ["bigtext_64k.bin"],
+        "Header-encrypted multi-volume with new-style names (-hp + -v8k). MainHead carries MHD_NEWNUMBERING; split FileHeads decrypt before packed data reassembly."),
     ("rar300", "with_comment_rar300.rar",
         ["a", "-m3", "-zcomment.txt", "-ep", "-cfg-", "-idp"],
         ["hello.txt"],
@@ -54,6 +63,14 @@ FIXTURES = [
         ["a", "-m3", "-v8k", "-vn", "-ep", "-cfg-", "-idp"],
         ["bigtext_64k.bin"],
         "Multi-volume (-v8k → 8 KB volumes), -vn forces OLD-style naming (.r00, .r01, …). MainHead carries MHD_VOLUME (0x0001) but NOT MHD_NEWNUMBERING."),
+    ("rar300", "encrypted_multivol_rar300.rar",
+        ["a", "-m3", "-ppassword", "-v8k", "-vn", "-ep", "-cfg-", "-idp"],
+        ["bigtext_64k.bin"],
+        "Encrypted multi-volume (-p + -v8k + -vn). Every split FileHead carries LHD_PASSWORD and the same salt; AES-CBC decrypts one logical packed stream after concatenating fragments."),
+    ("rar300", "encrypted_newnaming_rar300.rar",
+        ["a", "-m3", "-ppassword", "-v8k", "-ep", "-cfg-", "-idp"],
+        ["bigtext_64k.bin"],
+        "Encrypted multi-volume with new-style names (-p + -v8k). MainHead carries MHD_NEWNUMBERING; split FileHeads carry LHD_PASSWORD and one shared salt."),
     ("rar300", "multivol_newnaming_rar300.rar",
         ["a", "-m3", "-v8k", "-ep", "-cfg-", "-idp"],
         ["bigtext_64k.bin"],
@@ -118,6 +135,16 @@ def run_rar(prefix_path, args, cwd):
     return result
 
 
+def password_from_switches(switches):
+    for sw in switches:
+        lower = sw.lower()
+        if lower.startswith("-hp") and len(sw) > 3:
+            return sw[3:]
+        if lower.startswith("-p") and len(sw) > 2:
+            return sw[2:]
+    return None
+
+
 def generate_one(version_tag, archive, switches, inputs, description):
     target_dir = FIXTURE_BASE / version_tag
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -180,7 +207,12 @@ def generate_one(version_tag, archive, switches, inputs, description):
 
     # Capture lt output (use first produced file as the primary archive name)
     lt_target = produced[0]
-    listing = run_rar(PREFIXES[version_tag], ["lt", lt_target], work).stdout_text
+    lt_args = ["lt"]
+    password = password_from_switches(switches)
+    if password:
+        lt_args.append(f"-p{password}")
+    lt_args.append(lt_target)
+    listing = run_rar(PREFIXES[version_tag], lt_args, work).stdout_text
     (expected_dir / f"{archive}.lt.txt").write_text(listing)
     return True
 
