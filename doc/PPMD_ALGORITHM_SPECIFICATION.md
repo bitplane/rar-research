@@ -207,14 +207,118 @@ for i = 0, k = 0; i < 38; i++:
 This gives bucket sizes: 1, 2, 3, 4 (4 each), then 6, 8 (4 each), then 12,
 16, 20 (4 each), then groups of 4 up to 128 (26 buckets).
 
-### 4.3 Block Coalescing (GlueFreeBlocks)
+### 4.3 Allocation flow (AllocUnits / AllocUnitsRare / SplitBlock)
 
-When allocation fails and `glue_count` reaches 0, all free blocks are collected
-into a doubly-linked list, adjacent free blocks are merged, and the merged blocks
-are redistributed into the free lists. `glue_count` resets to 255 after gluing.
+`AllocUnits(indx)` is the fast path. It pops the head of `free_list[indx]`
+if non-empty; otherwise it tries to bump-allocate from the `[lo_unit,
+hi_unit)` region (`lo_unit` advances upward by `bucket_units * UNIT_SIZE`).
+If the bump fails, control falls into the rare path.
 
-If allocation still fails after gluing, `RestartModel()` reinitializes the
-entire model.
+`AllocUnitsRare(indx)` is the slow path. It:
+
+1. If `glue_count == 0`, runs `GlueFreeBlocks()` (which sets
+   `glue_count = 255`), then retries `free_list[indx]`. If a node is now
+   available, return it.
+2. Walks upward through bucket indices `i = indx+1, indx+2, ...` searching
+   for the first non-empty `free_list[i]`.
+3. If a larger free block is found, it is removed via `RemoveNode` and
+   `SplitBlock(block, i, indx)` cuts it down: the requested-size prefix is
+   returned to the caller; the remainder (one to two leftover pieces,
+   chosen via `units2indx` / `indx2units` to land on valid bucket sizes)
+   is pushed back onto the corresponding free lists via `InsertNode`.
+4. If no larger bucket has free blocks, the path runs through the bump-
+   allocator one more time and decrements `glue_count` by 1. The bump
+   succeeds iff `(units_start − text) > requested_bytes`. When it succeeds,
+   the allocator carves the block off the *bottom* of `units_start` (so
+   `units_start` shrinks downward) rather than advancing `lo_unit` upward.
+   When it fails it returns NULL.
+
+Notes:
+
+- `glue_count` is **decremented only on the bump-fallback path inside
+  `AllocUnitsRare`**, not on every alloc call. It is reset to 255 each time
+  `GlueFreeBlocks` runs.
+- The split step uses `units2indx` to find the target bucket for the
+  remainder. If the leftover unit count does not match any bucket exactly,
+  the implementation pushes the largest fitting piece first and then the
+  trailing residue, so all pieces land on valid bucket sizes.
+- Decoder and encoder share this exact allocator. Restart timing is
+  driven by the same alloc-failure conditions on both sides, so the
+  byte stream stays in sync only if implementations match this flow.
+
+### 4.4 GlueFreeBlocks
+
+GlueFreeBlocks coalesces adjacent free blocks at the *byte-address* level
+inside the units region. It does **not** sort offsets; it walks memory
+directly using a record-type stamp at offset 0 of each 12-byte unit:
+
+- `CPpmd_State`: `Symbol; Freq` — `Freq != 0` for live state arrays
+- `CPpmd7_Context`: `UInt16 NumStats` — `NumStats != 0` for live contexts
+- `CPpmd7_Node`: `UInt16 Stamp` — `Stamp == 0` marks a free record (head
+  records and the guard at `lo_unit` use `Stamp == 1`)
+
+Algorithm:
+
+```
+procedure GlueFreeBlocks():
+    glue_count = 255
+
+    // Set a guard node at lo_unit so the merge walk has a stop sentinel.
+    if lo_unit != hi_unit:
+        ((Node *)lo_unit).Stamp = 1
+
+    // Walk every free_list, threading the freed records into a singly-
+    // linked list `head` sorted by allocation history (not by address).
+    // Each record gets its node header re-stamped (Stamp = 0, NU = bucket
+    // size in units).
+    head = 0
+    for i in 0..38:
+        nu = indx2units[i]
+        for node in free_list[i]:        // pops in list order
+            node.Stamp = 0
+            node.NU = nu
+            node.Next = head
+            head = node
+        clear free_list[i]
+
+    // Glue pass: walk `head`. For each node, attempt to extend it by
+    // adding the NU of the *physically next* unit in memory (i.e.,
+    // node + node.NU). If that next unit's Stamp == 0 and the combined
+    // NU stays below 0x10000, merge by absorbing the trailing block.
+    prev = &head
+    for n in head-list:
+        if n.NU == 0:
+            // Already absorbed earlier in this loop, drop it.
+            *prev = n.Next
+            continue
+        prev = &n.Next
+        loop:
+            node2 = n + n.NU            // pointer arithmetic in units
+            new_nu = n.NU + node2.NU
+            if node2.Stamp != 0 or new_nu >= 0x10000: break
+            n.NU = new_nu
+            node2.NU = 0                // mark absorbed; skipped above
+
+    // Fill pass: walk `head` again and re-bucket each surviving block.
+    // Runs larger than 128 units are emitted as repeated 128-unit
+    // blocks; the trailing residue is split into the largest fitting
+    // bucket plus (optionally) a remainder.
+    for n in head-list:
+        nu = n.NU
+        while nu > 128:
+            InsertNode(n, 37)           // bucket 37 = 128 units
+            n += 128; nu -= 128
+        i = units2indx[nu - 1]
+        if indx2units[i] != nu:
+            k = indx2units[i - 1]
+            InsertNode(n + k, nu - k - 1)  // residue into smaller bucket
+            i = i - 1                       // and the prefix into i-1
+        InsertNode(n, i)
+```
+
+If `AllocUnitsRare` runs `GlueFreeBlocks` and still cannot satisfy the
+allocation, the eventual NULL return propagates up to `UpdateModel` or
+`CreateSuccessors`, which call `RestartModel()` per §11.1.
 
 ---
 
@@ -237,9 +341,19 @@ for i = 3, m = 3, k = 1; i < 256; i++:
     ns2indx[i] = m
     if --k == 0: k = ++m - 2
 
-// HB2Flag: high-bit flag for symbol values
-hb2flag[0x00..0x3F] = 0
-hb2flag[0x40..0xFF] = 8
+// HB2Flag: high-bit flag for symbol values, used as a column adder in
+// SEE / BinSumm lookups. Two variants are used by the model:
+//
+//   hb2flag_3(sym): 0 if sym < 0x40, else 8     (used in MakeEscFreq,
+//                                                SEE col, GetBinSumm
+//                                                "found_state" term)
+//   hb2flag_4(sym): 0 if sym < 0x40, else 16    (used in GetBinSumm
+//                                                "one_state" term)
+//
+// The reference implements these as `(((unsigned)sym + 0xC0) >> (8-n))
+// & (1 << n)` for n in {3, 4}; the equivalent table form is shown above.
+// Many spec readers see only the n=3 form and miss the n=4 variant,
+// which is needed to compute the binary-context BinSumm column.
 ```
 
 ### 5.2 RestartModel (called at Init and on memory exhaustion)
@@ -484,9 +598,17 @@ found_state.freq += 4
 min_context.summ_freq += 4
 if found_state.freq > found_state.prev.freq:
     swap found_state with predecessor
-if found_state.freq > MAX_FREQ: Rescale()
+    if found_state.freq > MAX_FREQ: Rescale()   // INSIDE the swap branch
 NextContext()
 ```
+
+Note the rescale call sits **inside** the swap branch in the reference
+implementation. If `freq > MAX_FREQ` but no swap occurred (because the
+predecessor's freq is even higher), Rescale is **not** called from
+Update1 — the next update will retry. An implementation that hoists the
+Rescale outside the swap branch will diverge from the reference at the
+exact boundary `freq == MAX_FREQ + 4`, desynchronising encoder and
+decoder.
 
 **Update2** — found after escape (in a lower-order context):
 ```
@@ -665,6 +787,15 @@ function MakeEscFreq(num_masked) -> (See, esc_freq):
 
     if min_context.num_stats != 256:
         row = ns2indx[non_masked - 1]
+        // NOTE: the subtraction below is unsigned and uses C wraparound
+        // semantics. If suffix.num_stats < min_context.num_stats, the
+        // unsigned underflow yields a very large value and the
+        // comparison evaluates to TRUE (since `non_masked` is small).
+        // Implementations using signed/checked arithmetic must replicate
+        // this behavior — treat "underflow" as "TRUE" rather than an
+        // error — or they will diverge in the small fraction of cases
+        // where the suffix happens to have fewer non-masked symbols than
+        // the current context.
         col = (non_masked < suffix(min_context).num_stats - min_context.num_stats)
             + 2 * (min_context.summ_freq < 11 * min_context.num_stats)
             + 4 * (num_masked > non_masked)
@@ -795,23 +926,28 @@ PPMd has exactly **one** recovery mechanism for allocator / model
 overflow: a full `RestartModel()` that discards every context, SEE
 entry, and statistics array and rebuilds the root context from
 scratch. There is no "partial restart" and no "compacting" pass
-separate from the free-list glue pass (§4.3). An encoder and decoder
+separate from the free-list glue pass (§4.4). An encoder and decoder
 must restart in lockstep — both sides trigger on the same conditions
 (model-driven, not data-driven) so the range coder stays in sync.
 
-Restart trigger callsites in `model.cpp`:
+Restart trigger callsites (in `UpdateModel` and `CreateSuccessors`):
 
-| Site                       | Cause |
-|----------------------------|-------|
-| `UpdateModel` (line 283)   | `AllocContext()` returned null building the initial successor. |
-| `UpdateModel` (line 289)   | Text pointer reached the Units region boundary (`pText >= FakeUnitsStart`) when appending a symbol byte. |
-| `UpdateModel` (line 294)   | `CreateSuccessors()` returned null — no room for the successor context chain. |
-| `UpdateModel` (line 315)   | `AllocUnits()` returned null growing a stats array from `ns` to `ns+1`. |
-| `UpdateModel` (line 323)   | `AllocUnits(1)` returned null converting a unary context (NumStats==1) to multi-state. |
-| `rescale` (via `ShrinkUnits`) | Shrink reallocation failed after dead-symbol removal. Rarer but possible. |
+| Site                              | Cause |
+|-----------------------------------|-------|
+| `UpdateModel` order-fall == 0     | `CreateSuccessors()` returned null at MAX-order successor lookup. |
+| `UpdateModel` text-buffer append  | `text >= units_start` after appending the new symbol byte. |
+| `UpdateModel` minSuccessor branch | `CreateSuccessors()` returned null when materialising a RAW successor into a real context. |
+| `UpdateModel` stats expand        | `AllocUnits(i + 1)` returned null growing a stats array from one bucket to the next. Only fires on the even-to-odd `ns1` transition (when the bucket size actually changes). |
+| `UpdateModel` unary → multi       | `AllocUnits(0)` returned null converting a unary context (`NumStats == 1`) to a 2-symbol state array. |
+| `CreateSuccessors` chain alloc    | `AllocUnitsRare(0)` returned null inside the loop that builds new context records. Surfaced via the `CreateSuccessors → null` return paths above. |
 
 The model does **not** restart on ordinary escape, on `MAX_FREQ`
-rescale, or on SEE saturation — those are in-band operations.
+rescale, on SEE saturation, or on the rescale-shrink path — those are
+in-band operations. (Older spec text listed "ShrinkUnits failure during
+rescale" as a restart trigger; this is **not** reachable in the variant
+H reference. Rescale's shrink uses `SplitBlock` on the existing oversize
+block when the target bucket's free list is empty, so it cannot run out
+of memory.)
 
 #### MAX_FREQ rescale boundary behavior
 
@@ -869,10 +1005,27 @@ A context with exactly one symbol (`NumStats == 1`) stores its state
 inline (`OneState`) rather than allocating a stats array. Transitions:
 
 - **1 → 2 symbols:** Allocate a stats array, copy `OneState` into
-  `stats[0]` with `freq = min(2*OneState.freq, MAX_FREQ - 4)`, set
+  `stats[0]` with frequency assigned by the **piecewise rule** below
+  (this is *not* `min(2*x, MAX_FREQ-4)` — see the warning), set
   `stats[1] = new symbol` with the inherited freq from §8.3, set
   `SummFreq = stats[0].freq + init_esc + (ns > 3)` where `init_esc`
   depends on the escape count at the root (`InitEsc` table).
+
+  Frequency assignment (matches reference):
+  ```
+  if OneState.freq < (MAX_FREQ / 4 - 1):          // < 30 for MAX_FREQ=124
+      stats[0].freq = OneState.freq * 2
+  else:
+      stats[0].freq = MAX_FREQ - 4                // = 120
+  ```
+
+  **Warning — common spec error.** The intuitive formulation
+  `min(2*OneState.freq, MAX_FREQ - 4)` is **wrong**. The reference
+  caps to 120 as soon as `OneState.freq >= 30`, jumping discontinuously
+  over the entire range `[30, 60)` instead of smoothly doubling there.
+  Implementations using `min(2*f, 120)` produce frequencies in [60, 120)
+  that the reference would have set to exactly 120, which desynchronises
+  the next several symbol updates in that subtree.
 - **2 → 1 symbol** (post-rescale): See MAX_FREQ rescale point 2 above.
 - **Unary context successor:** `OneState.freq` is used as the symbol's
   inherited frequency in `CreateSuccessors` without any branching —
