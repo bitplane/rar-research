@@ -895,22 +895,32 @@ The minimum match length is 2.
 
 ### 11.6 Distance Decoding
 
-Distance slots from the Distance table are decoded:
+A slot from the Distance table decodes to `dist_enc`, which is **zero-based**.
+The distance the match copier uses is `dist_enc + 1`, so slot 0 is distance 1,
+the immediately preceding byte. The write side states the same relation as
+`dist_enc = dist - 1` (§11.11.5). Drop the `+ 1` and every match that reaches
+back a few bytes copies from the wrong place.
 
-- For slots 0-3: distance = slot.
+- For slots 0-3: `dist_enc = slot`, no extra bits.
 - For slots >= 4: `numBits = (slot - 2) >> 1`, then
-  `distance = ((2 | (slot & 1)) << numBits) + extra_bits`.
+  `dist_enc = ((2 | (slot & 1)) << numBits) + extra_bits`.
 
   When `numBits >= 4` (the align threshold) and align mode is active:
   - Read `numBits - 4` bits as the high portion.
   - Read the low 4 bits from the Align Huffman table.
-  - `distance = base + (high_bits << 4) + align_decoded_value`.
+  - `extra_bits = (high_bits << 4) + align_decoded_value`.
 
   When `numBits < 4` or align mode is inactive:
   - Read all `numBits` bits directly from the bitstream.
 
-The final distance is `slot_value + 1` (1-based: distance 1 means the immediately
-preceding byte).
+| Slot | numBits | `dist_enc` | distance |
+|------|---------|------------|----------|
+| 0    | 0       | 0          | 1        |
+| 1    | 0       | 1          | 2        |
+| 2    | 0       | 2          | 3        |
+| 3    | 0       | 3          | 4        |
+| 4    | 1       | 4-5        | 5-6      |
+| 5    | 1       | 6-7        | 7-8      |
 
 **Align mode:** active when any symbol in the Align table has a code length different
 from 4. When all Align lengths are 4, direct bit reading is equivalent and faster.
@@ -1304,10 +1314,11 @@ generating archives from scratch.
 ##### Distance table extension (Unpack70 only)
 
 For v1 blocks the Distance alphabet grows from 64 to 80 codes. The
-slot-to-distance formula in §11.6 is unchanged — slot 79 just plugs
-into the same `numBits = (slot >> 1) - 1` and
-`base = ((2 | (slot & 1)) << numBits) + 1` expressions, which produce
-larger values at the high slots without any special case. Concretely:
+slot-to-distance formula in §11.6 is unchanged. Slot 79 plugs into the
+same `numBits = (slot - 2) >> 1` and
+`dist_enc = ((2 | (slot & 1)) << numBits) + extra_bits` expressions, which
+produce larger values at the high slots without any special case. The
+distances below are `dist_enc + 1`, as everywhere else:
 
 | Slot | numBits | decoded distance range |
 |------|---------|------------------------|
