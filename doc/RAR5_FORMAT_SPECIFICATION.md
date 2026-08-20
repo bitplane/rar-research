@@ -189,7 +189,7 @@ Present only in archives with encrypted headers (header type = 4).
 | Encryption Flags  | vint     | `0x0001`: password check data is present. |
 | KDF Count         | 1 byte   | Binary logarithm of PBKDF2 iteration count. |
 | Salt              | 16 bytes | Global salt for all encrypted headers. |
-| Check Value       | 12 bytes | Password verification. Present if flag `0x0001` set. First 8 bytes are the folded PBKDF2 password-check value, last 4 bytes are a checksum of those 8 bytes. |
+| Check Value       | 12 bytes | Password verification. Present if flag `0x0001` set. First 8 bytes are the folded PBKDF2 password-check value, last 4 bytes are `SHA-256(first 8 bytes)[0..4]`. Not a CRC32. |
 
 When this header is present, every subsequent header is preceded by a 16-byte
 AES-256 IV, followed by encrypted header data padded to a 16-byte boundary.
@@ -1735,8 +1735,13 @@ RAR5 uses AES-256 in CBC mode. The encryption key is derived using PBKDF2 with
 HMAC-SHA256. The iteration count is `2^(KDF_Count)` where KDF_Count is the byte
 value stored in the encryption header. The salt is 16 bytes.
 
-For password check values, additional PBKDF2 rounds are performed beyond the
-key derivation to produce verification data.
+The KDF yields three 32-byte taps from one PBKDF2 chain: the AES key after
+`2^KDF_Count` iterations, the HashKey 16 iterations later, and the password-check
+material 16 iterations after that. XOR-fold the third tap's four 8-byte quarters
+together to get the 8-byte `PswCheck`, then append `SHA-256(PswCheck)[0..4]` for
+the stored 12-byte Check Value. That trailing 4 bytes is a truncated SHA-256
+digest, not a CRC32, and an archive that stores a CRC there fails password
+verification in WinRAR.
 
 ## Appendix D: Version History
 

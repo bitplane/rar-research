@@ -503,14 +503,16 @@ def encrypt_file_rar50(password_utf8, plaintext):
                                   #          encryption header has its own salt layout)
     if emit_check_value:
         emit_bytes(psw_check_8)    # 8 bytes
-        emit_bytes(checksum(psw_check_8))  # 4-byte CRC of the check value
+        emit_bytes(sha256(psw_check_8)[0:4])   # truncated SHA-256, not a CRC
     emit_bytes(ciphertext)
 ```
 
 The check value stored in the header is the 8-byte folded `psw_check_8`
-followed by its own 4-byte checksum (CRC32 over the 8 bytes, per the RAR
-5.0 spec §6 / §8). The full 12-byte field lets the decoder verify the
-password without decrypting any content.
+followed by `SHA-256(psw_check_8)[0:4]`. **This is a truncated SHA-256 digest,
+not a CRC32**, and it is the one place in RAR 5.0 where a 4-byte trailing
+checksum is not CRC32. Write a CRC there and WinRAR reads the check value as
+damaged, so it silently stops verifying passwords against it. The full 12-byte
+field lets a decoder reject a wrong password without decrypting any content.
 
 ### 5.3 File hash MAC conversion
 
@@ -676,7 +678,7 @@ def write_encrypted_headers_50(out, password_utf8, headers, lg2_count=15):
     archive_salt = os.urandom(16)
     key_32, _hash_key, psw_check_8 = pbkdf2_derive(
         password_utf8, archive_salt, count=1 << lg2_count)
-    psw_check_12 = psw_check_8 + crc32_le(psw_check_8).to_bytes(4, "little")
+    psw_check_12 = psw_check_8 + sha256(psw_check_8)[0:4]   # not a CRC, see §5.2
 
     # 1. Write the marker.
     out.write(RAR50_MARKER)
