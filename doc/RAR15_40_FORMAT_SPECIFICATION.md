@@ -1549,16 +1549,21 @@ if rmode & 0x8:
         byte = read_uint8()
         remainder = (byte << 16) | (remainder >> 8)
 
-    nanoseconds = remainder / 10_000_000   # convert 100ns units
+    nanoseconds = remainder * 100          # 100ns units -> ns
 
     if rmode & 0x4:
         time += 1 second       # odd-second correction
 ```
 
-The sub-second bytes provide up to 24 bits of precision in units of 100
-nanoseconds (Windows FILETIME resolution). The bytes are packed in a specific
-order: each new byte shifts into the high 8 bits of a 24-bit accumulator, with
-existing bits shifting right by 8.
+`remainder` is a count of 100-nanosecond ticks (Windows FILETIME resolution),
+so nanoseconds is `remainder * 100`, never a division. A second is 10,000,000
+ticks, and the field holds 24 bits, so the stored value is always below that.
+
+The bytes are packed high end first: each new byte shifts into the top 8 bits
+of a 24-bit accumulator and the existing bits shift right by 8. Fewer bytes
+therefore means a coarser tick, not a smaller number. One byte leaves the low
+16 bits zero and resolves to 6.55 ms, two bytes to 25.6 us, three to the full
+100 ns.
 
 ---
 
