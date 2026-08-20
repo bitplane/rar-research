@@ -1645,6 +1645,16 @@ Filters must not overlap (each filter's start must be >= previous filter's end).
 
 ### 12.2 Filter Types
 
+Each filter covers a region of the unpacked file. Below, `file_offset` is the
+unpacked-file offset of that region's first byte (from Block Start, §12.1) and
+`position` is relative to the region start, so the absolute position of a byte
+is `file_offset + position`.
+
+E8, E8E9 and ARM all fold that absolute position into the address they rewrite.
+A region that does not start at file offset 0, or an executable covered by
+several regions, decodes to garbage if the region-relative position is used on
+its own. DELTA is the exception and depends on nothing outside its region.
+
 #### DELTA (type 0)
 
 Delta encoding with N channels. Data is deinterleaved by channel, then each
@@ -1666,14 +1676,19 @@ relative CALL addresses to absolute, using a 24-bit (16 MB) file size model.
 **Decode (reverse transform):**
 ```
 fileSize = 1 << 24   (16 MB)
-For each 0xE8 byte found:
-    offset = current_position_in_output & (fileSize - 1)
-    addr = read_uint32_le(position + 1)
+For each 0xE8 byte at position p, while p + 5 <= region_size:
+    offset = (file_offset + p + 1) & (fileSize - 1)   # the address field, not the opcode
+    addr = read_uint32_le(p + 1)
     if addr < fileSize:
-        write_uint32_le(position + 1, addr - offset)
+        write_uint32_le(p + 1, addr - offset)
     else if addr > 0xFFFFFFFF - offset:
-        write_uint32_le(position + 1, addr + fileSize)
+        write_uint32_le(p + 1, addr + fileSize)
+    resume the scan at p + 5
 ```
+
+`offset` is taken at the address field, one byte past the opcode. Resuming at
+`p + 5` rather than `p + 1` keeps a `0xE8` byte inside a rewritten address from
+being read as another opcode.
 
 #### E8E9 (type 2)
 
@@ -1687,14 +1702,19 @@ instructions where the high byte is `0xEB`.
 
 **Decode (reverse transform):**
 ```
-For each 4-byte aligned position:
-    if instruction[3] == 0xEB:
-        offset = (current_position - 4) >> 2   (PC-relative)
-        value = read_uint32_le(position)
+For each 4-byte aligned position p, while p + 4 <= region_size:
+    if byte[p + 3] == 0xEB:
+        offset = (file_offset + p) >> 2        # ARM PC counts in 4-byte words
+        value = read_uint32_le(p)
         value = value - offset
         value = (value & 0x00FFFFFF) | 0xEB000000
-        write_uint32_le(position, value)
+        write_uint32_le(p, value)
 ```
+
+The `>> 2` operand is the absolute position of the instruction. Using `p` alone
+corrupts every branch target in any region that does not start at file offset 0,
+which for an ARM binary of more than one filter block is most of them. This is
+the exact inverse of `forward_arm` in `FILTER_TRANSFORMS.md` §5.
 
 ---
 
