@@ -164,7 +164,7 @@ this table:
 | `LastDist`, `LastLength` / `_lastLen` | ✓ | ✓ carries | |
 | `OldDistPtr` | ✓ | ✓ carries | |
 | `WrPtr` / `UnpPtr` / `PrevPtr` | ✓ | ✓ carries | |
-| Huffman tables (`BlockTables`, `TablesRead5`) | ✓ | ✓ carries | Unpack50/70 only. |
+| Huffman tables (`BlockTables`, `TablesRead5`) | ✓ | ✓ carries | Also Unpack20 and Unpack29, by their own mechanisms (§1.3). |
 | Bit input state | ✓ | ✓ (new stream, but fresh bit buffer) | |
 | `FirstWinDone` | ✓ | ✓ carries | Unpack50/70 only. |
 | `WriteBorder` | ✓ | ✓ carries | Unpack50/70 only. |
@@ -195,9 +195,8 @@ forces `Solid = false`).
 
 **Unpack15 / Unpack20 / Unpack29 (RAR 1.5-4.x).** These older codecs have
 separate initialization paths. The broad rules are the same: the LZ window,
-repeat distances, and (for Unpack29) PPMd model context persist across solid
-files; filters and per-block Huffman tables reset. The state fields map
-differently:
+repeat distances, Huffman tables, and (for Unpack29) PPMd model context persist
+across solid files; only filters reset. The state fields map differently:
 
 | Codec | State that carries in solid mode |
 |-------|----------------------------------|
@@ -238,9 +237,24 @@ continuation decision for each file is still the file header Compression
 Information bit 6, gated by archive order: only a regular file after a
 previous regular file can be a valid solid continuation.
 
-### 1.3 The RAR 5.0 `table_present` flag interaction
+### 1.3 Reusing Huffman tables across a solid boundary
 
-In RAR 5.0's block header (§11.2 of the RAR 5.0 spec), bit 7 of the
+Every LZ codec from RAR 2.0 on can start a solid continuation file
+without paying for a fresh Huffman table. The saving is 100-500 bytes
+per file, which matters on solid groups of many small files. The
+mechanism differs per codec.
+
+**Unpack20 and Unpack29.** The previous file's 4-bit code-length array
+survives the file boundary, and each table definition carries a
+keep-tables bit: set, the level symbols are read as deltas against those
+surviving lengths and only the changes cost bits; clear, the array is
+zeroed first and the definition is absolute. Unpack29 goes further at a
+member boundary. Its end-of-block marker is two bits, and `0,0` means
+"next file, keep the current tables", so the follower reads no table
+definition at all and decodes its first symbol with the tables already
+loaded.
+
+**Unpack50 and Unpack70.** In RAR 5.0's block header (§11.2 of the RAR 5.0 spec), bit 7 of the
 flags byte is "table present". An encoder emitting the first LZ block of
 a solid-continuation file has three choices:
 
@@ -252,8 +266,9 @@ a solid-continuation file has three choices:
 
 A practical encoder picks `table_present = 0` when the file is small
 (< 32 KB) and highly similar to the previous one; otherwise emits new
-tables. There is no downside to always emitting new tables except a
-small size overhead.
+tables. The same judgement applies to the Unpack20/29 keep-tables bit.
+There is no downside to always emitting new tables except a small size
+overhead, so an encoder can ship without any of this and add it later.
 
 ### 1.4 The "first file without solid flag" wedge
 
