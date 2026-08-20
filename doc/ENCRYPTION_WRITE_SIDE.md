@@ -231,8 +231,8 @@ def set_key_20(password):
     Key20 = [0xD3A3B879, 0x3F6D12F7, 0x7515A235, 0xA4E7F123]   # reset
     SubstTable20 = list(InitSubstTable20)                       # reset
 
-    for J in 0..255:
-        for I in 0, 2, 4, ... while I < PswLength:              # step 2
+    for J in range(256):                                        # J = 0..255 inclusive
+        for I in range(0, PswLength, 2):                        # step 2
             N1 = CRCTab[(password[I]   - J) & 0xff] & 0xff
             N2 = CRCTab[((password[I+1] if I+1 < PswLength else 0) + J) & 0xff] & 0xff
             K = 1
