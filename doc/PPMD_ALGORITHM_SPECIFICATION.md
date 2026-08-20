@@ -1092,12 +1092,16 @@ Used by RAR 3.x/4.x archives. State: `Range`, `Code`, `Low`, `Bottom`.
 
 **Initialization:**
 ```
-read 1 byte (must be 0)
 Code = read 4 bytes big-endian
 Range = 0xFFFFFFFF
 Low = 0
 Bottom = 0x8000
 ```
+
+There is **no** preamble byte here. The 7z coder in §12.1 skips a leading zero
+byte; this one does not, and §12.3 writes none. Consume one anyway and the four
+`Code` bytes land shifted by eight bits, which desynchronises the decoder on the
+first symbol.
 
 **GetThreshold(total):**
 ```
