@@ -120,7 +120,7 @@ Every archive block (header) follows this structure:
 | Extra Area Size | vint | Size of extra area. Present only if flag `0x0001` is set. |
 | Data Size     | vint   | Size of data area. Present only if flag `0x0002` is set. |
 | ...           | ...    | Type-specific fields. |
-| Extra Area    | ...    | Optional, present if flag `0x0001` is set. |
+| Extra Area    | ...    | Optional, present if flag `0x0001` is set. Always last in the header, whatever precedes it (see §5). |
 | Data Area     | ...    | Optional, present if flag `0x0002` is set. Not included in Header CRC or Header Size. |
 
 ### Header Types
@@ -148,6 +148,20 @@ Every archive block (header) follows this structure:
 ---
 
 ## 5. Extra Area Format
+
+The extra area ends where the header ends, so find it by subtracting rather
+than by parsing forward:
+
+```
+header_end = offset_of(Header Type) + Header Size
+extra_start = header_end - Extra Area Size
+```
+
+Reading it sequentially after the last type-specific field this document names
+gives the same answer for every archive that exists today, and breaks the day a
+future version adds a field in between. Subtracting from the end skips whatever
+the parser does not recognise, which is the point of `Header Size` being defined
+as "through end of Extra Area".
 
 The extra area consists of one or more records:
 
