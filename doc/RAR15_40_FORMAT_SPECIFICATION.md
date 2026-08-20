@@ -179,8 +179,8 @@ Block type `0x73` (MAIN_HEAD). Immediately follows the marker block.
 | +2     | HEAD_TYPE | uint8  | `0x73` |
 | +3     | HEAD_FLAGS | uint16 | See below. |
 | +5     | HEAD_SIZE | uint16 | Total header size. |
-| +7     | RESERVED1 | uint16 | Reserved. When `MHD_AV` is set, this field is `HighPosAV` (high 16 bits of the 48-bit byte offset to the AV block; see §10.1). |
-| +9     | RESERVED2 | uint32 | Reserved. When `MHD_AV` is set, this field is `PosAV` (low 32 bits of the AV byte offset; see §10.1). |
+| +7     | RESERVED1 | uint16 | `HighPosAV`: high 16 bits of the 48-bit byte offset to the AV block (see §10.1). Always present. |
+| +9     | RESERVED2 | uint32 | `PosAV`: low 32 bits of that offset (see §10.1). Always present. |
 | +13    | ENCRYPT_VER | uint8 | Encryption version. Only present if `HEAD_FLAGS & 0x0200`. |
 
 HEAD_CRC is computed as: `CRC32(HEAD_TYPE .. RESERVED2) & 0xFFFF`
@@ -251,13 +251,16 @@ Flags to set based on encoder decisions and derivable content:
   does not require this; RAR 4.0+ archives with encryption
   typically set it.
 
-The two `RESERVED*` fields must be zero **unless** `MHD_AV` is set, in
-which case `RESERVED1`/`RESERVED2` carry `HighPosAV`/`PosAV` (the 48-bit
-byte offset to the `HEAD3_AV` block; see §10.1). Verified against
-`_refs/unrar/arcread.cpp` (`MainHead.HighPosAV = Raw.Get2();
-MainHead.PosAV = Raw.Get4();`) and `headers.hpp` (`HighPosAV` is
-`ushort`, `PosAV` is `uint`). Modern encoders that don't emit AV leave
-both fields zero.
+`RESERVED1`/`RESERVED2` are `HighPosAV`/`PosAV`, the 48-bit byte offset to the
+`HEAD3_AV` block (§10.1). They occupy those 6 bytes whether or not `MHD_AV` is
+set, and readers decide an archive is signed from the offset alone:
+`Signed = (PosAV != 0 || HighPosAV != 0)`, no flag test. Treating them as
+inert "reserved" bytes when the flag is clear misses signed archives that
+carry the offset without the flag.
+
+An encoder should write the offset when it emits an AV block and set `MHD_AV`
+to match. Encoders that emit no AV block leave both fields zero, which is what
+every RAR 3.x and later archive does.
 
 ---
 
