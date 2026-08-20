@@ -397,8 +397,8 @@ Key observations:
     boundary; only the underlying byte source switches. A cut may land
     mid-symbol — the range coder's next byte fetch will simply happen
     from the new volume.
-  - **AES-CBC encrypted streams:** must respect the 16-byte block
-    boundary at the cut (see "Encrypted data" below).
+  - **AES-CBC encrypted streams:** the cut can fall anywhere, including
+    inside a 16-byte block (see "Encrypted data" below).
 
   Volume boundaries are not a codec event; they are a transport-layer
   byte-stream split.
@@ -483,12 +483,21 @@ When splitting a file across volumes N and N+1:
   mid-stream.
 - **Service headers** (comments, recovery) attached to split files can
   themselves be split. They follow the same split-flag pattern.
-- **Encrypted data:** AES-CBC can cross volume boundaries because the IV
-  and key are already in the file header and persist in RAM. The
-  16-byte block alignment must be maintained — the encoder must not
-  emit a partial 16-byte block at the volume cut. RAR 1.3 XOR and
-  RAR 1.5 CRC-XOR stream ciphers are also stream-continuous across
-  volume boundaries; they have no block alignment to maintain.
+- **Encrypted data:** AES-CBC crosses volume boundaries because the IV
+  and key are in the file header and persist in RAM. Encrypt the whole
+  logical packed stream once, zero-padded to 16 bytes at its end, then
+  cut the ciphertext wherever the volume size falls. Only that
+  concatenated stream is block-aligned; a fragment usually is not, and
+  WinRAR's own output is full of fragments that are not. A reader
+  reassembles the fragments into one ciphertext and decrypts that, so an
+  encoder needs no padding, no alignment and no per-fragment fixup at the
+  cut. RAR 1.3 XOR and RAR 1.5 CRC-XOR stream ciphers are likewise
+  stream-continuous across volumes.
+
+  A reader that buffers its fragments still must not hand a partial
+  16-byte block to the block cipher. That is a buffering rule inside the
+  reader, not a constraint on where the encoder cuts: hold the tail bytes
+  back and prepend them to the next fragment's first read.
 
 ### 2.6 End-of-archive marker placement
 
