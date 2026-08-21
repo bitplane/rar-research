@@ -335,6 +335,33 @@ before writing. Safe policies are:
 Silent overwrite is unsafe. It lets a hostile archive hide a safe-looking file
 behind a later dangerous one after sanitization.
 
+## 6.5 Archive text printed to a terminal
+
+Names are not the only attacker-controlled text a reader prints. Archive and
+file comments (`CMT` service records in RAR 5.0, `COMM_HEAD` blocks before it)
+are shown during listing and extraction, and they are raw bytes chosen by
+whoever wrote the archive.
+
+A terminal reading those bytes will act on the escape sequences in them. The
+one worth naming is key redefinition, `ESC [ {key} ; "{string}" p`, which binds
+a key on some terminals to a string of the attacker's choosing. The user then
+runs it themselves at some later prompt. Cursor movement and screen clearing
+are milder but still let a comment forge output that looks like the reader's.
+
+Two workable policies:
+
+- **Refuse the comment.** Scan for `ESC [`, and if the bytes that follow are
+  digits and semicolons up to a `"`, treat the whole comment as unsafe and
+  print nothing. This is what the reference reader does, and it targets the
+  key-redefinition sequence specifically.
+- **Escape everything.** Print printable characters as they are and render
+  every other byte as `\xNN`. Strictly stronger, since it makes no judgement
+  about which sequences are dangerous, and it keeps the comment readable.
+
+Either way the comment must not reach the terminal unfiltered. This applies to
+listing output as much as extraction, since listing is what a cautious user
+runs *first* on an archive they do not trust.
+
 ## 7. `-ep` switch modes (compatible RAR reader CLI behaviour)
 
 compatible RAR reader exposes four path-handling modes via `-ep` (`options.hpp:12-15`):
@@ -369,6 +396,7 @@ explicit flag plus confirmation.
 | Junction to C:\ | RedirType=3 target=`C:\` | §5.4 reject non-relative |
 | Long path DoS | 50000-char single component | §6.3 reject |
 | UTF-8 bidi trick | `file.exe‮txt.cod` | §4.1 (filter controls U+202E et al.) |
+| Terminal key redefinition in a comment | `ESC [ 0 ; "rm -rf ~" p` | §6.5 filter or refuse |
 | TOCTOU symlink swap | replace `dir` with a symlink after validation | §6.2 race-safe creation |
 | Sanitized-name collision | `AUX` plus `_AUX` | §6.4 collision handling |
 
