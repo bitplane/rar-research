@@ -391,10 +391,17 @@ procedure RestartModel():
     // Every division here is integer, and the truncation is load-bearing.
     text_units = size / 8 / UNIT_SIZE       // one eighth of the pool, in units
     lo_unit = units_start = hi_unit - text_units * 7 * UNIT_SIZE
+    // units_start therefore sits at byte offset `size - 84 * text_units`.
     glue_count = 0
     order_fall = max_order
     run_length = init_rl = -(min(max_order, 12)) - 1
     prev_success = 0
+
+    // Where the slack goes: `size` is a byte count and is not generally a
+    // multiple of UNIT_SIZE, nor of 8*UNIT_SIZE. Both remainders stay in the
+    // text region. Taking `pool_units / 8` for the text instead of
+    // `size / 8 / UNIT_SIZE` hands those bytes to the units region and buys
+    // several extra bump units, which moves the restart point.
 
     // Create order-0 context with all 256 symbols
     hi_unit -= UNIT_SIZE
@@ -426,6 +433,21 @@ procedure RestartModel():
             see[i][k].shift = PPMD_PERIOD_BITS - 4    // = 3
             see[i][k].count = 4
 ```
+**A note on `UNIT_SIZE` if your node is not 12 bytes.** Everything above
+is in units, and the split is only reproducible if a unit means the same
+thing to you as to the encoder. An implementation whose node contains
+native pointers has a unit that grows on 64-bit, and then the pool has
+to be accounted in a *fixed* 12-byte unit for the split and converted to
+the native size afterwards, with a spare unit added to absorb the
+rounding. An implementation that stores offsets rather than pointers
+sidesteps this: its unit is 12 everywhere and the two accountings are
+the same. rars takes the second route.
+
+Either way the thing to check is not the formula but the behaviour:
+restart timing is observable, because a decoder that restarts at a
+different allocation than the encoder did produces wrong output from
+that point on. The way to know is a corpus large enough to exhaust the
+pool, extracted and compared byte for byte.
 
 The units region is exactly `7 * text_units` units taken off the top, and
 everything the divisions throw away stays in the text region: `size % 96` from
