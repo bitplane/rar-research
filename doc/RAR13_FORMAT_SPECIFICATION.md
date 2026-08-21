@@ -1056,13 +1056,23 @@ as the decoder does.
 
 #### 6.16.6 StMode
 
+**The table is not fixed.** `bytePlace` is coded with whichever of
+`PosHf0`..`PosHf4` the running average `AvrPlc` currently selects, by the
+same five thresholds as an ordinary literal (§6.16.4): `> 0x75ff` picks
+`PosHf4`, then `> 0x5dff`, `> 0x35ff`, `> 0x0dff`, else `PosHf0`. StMode
+changes what the symbol *means*, not which code carries it. Hardcode
+`PosHf4` and the decoder reads the symbol out of a different table
+whenever `AvrPlc` sits below `0x75ff`.
+
 In StMode the encoder may emit either:
 
-- **Exit StMode:** encode `bytePlace = 0` via `PosHf4`, then emit a single
-  `1` bit. Decoder sets `StMode = false` and returns.
-- **Short LZ in StMode:** encode `bytePlace = 0` via `PosHf4`, then emit `0`,
-  then `len - 3` (1 bit), then `dist + 1` via `DecodeNum(PosHf2)` concatenated
-  with 5 raw bits. Length is restricted to 3 or 4.
+- **Exit StMode:** encode `bytePlace = 0` via the `AvrPlc`-selected
+  table, then emit a single `1` bit. Decoder sets `StMode = false` and
+  returns.
+- **Short LZ in StMode:** encode `bytePlace = 0` via the same selected
+  table, then emit `0`, then `len - 3` (1 bit), then `dist + 1` via
+  `DecodeNum(PosHf2)` concatenated with 5 raw bits. Length is restricted
+  to 3 or 4.
 - **Literal byte in StMode:** encode the literal as in §6.16.4 but with
   `bytePlace + 1` (to avoid the reserved `bytePlace = 0` signal).
 

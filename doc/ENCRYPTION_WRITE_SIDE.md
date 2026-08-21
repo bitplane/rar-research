@@ -560,8 +560,16 @@ def encrypt_file_rar50(password_utf8, plaintext):
     ciphertext = aes256_cbc_encrypt(plaintext, key_32, iv,
                                     pad = ZERO_PAD_TO_16)
 
-    # Emit encryption header extra record (§8 record type 0x01 of RAR 5.0 spec):
+    # Emit encryption header extra record (§8 record type 0x01 of RAR 5.0 spec).
+    # Note the Flags vint between Version and KDF count: omit it and a reader
+    # takes lg2_count for Flags, the first salt byte for lg2_count, and every
+    # field after that is shifted by one.
+    crypt_flags = 0
+    if emit_check_value: crypt_flags |= 0x0001   # FHEXTRA_CRYPT_PSWCHECK
+    if use_hash_mac:     crypt_flags |= 0x0002   # FHEXTRA_CRYPT_HASHMAC
+
     emit_vint(0)                  # version = 0 (AES-256)
+    emit_vint(crypt_flags)        # encryption flags
     emit_byte(lg2_count)           # KDF count (binary log)
     emit_bytes(salt)               # 16 bytes
     emit_bytes(iv)                 # 16 bytes (only if `is_file_record`; archive
