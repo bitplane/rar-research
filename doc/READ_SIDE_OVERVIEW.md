@@ -40,20 +40,27 @@ which `ReadHeaderXX` function feeds the walk.
 | RAR 5.0/7.0 | `52 61 72 21 1A 07 01` (`Rar!` + `0x1a 0x07 0x01`) | 7 | Same as 1.5–4.x |
 
 `52` (`'R'`) is the lead byte for all three. A reader fast-paths by
-reading the first 7 bytes and checking them against the three forms
-via `IsSignature` (`archive.cpp:100-126`). Byte 7 of the `Rar!` form
+reading the first 7 bytes and checking them against the three forms.
+Byte 7 of the `Rar!` form
 distinguishes RAR 1.5–4.x (`0x00`) from RAR 5.0 (`0x01`); values
 `0x02..0x04` are reserved for a hypothetical `RARFMT_FUTURE` and
 should be rejected.
+
+**Oracles for §2.** The rars fixture tree carries a self-extractor per
+era: `rar13/SFXSRC.EXE` for RAR 1.3/1.4 and `readme.EXE` in the spec
+repo's `fixtures/1.54/`. The spec repo's `fixtures/negative/` set is the
+other half of the job: truncated and bit-flipped copies of both an
+archive and an SFX, which is what tells you a detector is rejecting for
+the right reason rather than accepting everything.
 
 ### 2.2 SFX scan
 
 If the first 7 bytes match none of the three signatures, the archive
 may be a self-extracting executable with the RAR data appended. Scan
-the first `MAXSFXSIZE` bytes (compatible RAR reader: 0x400000 = 4 MiB,
-defined in `rardefs.hpp:24`) for any `0x52`
-byte and retest `IsSignature` starting at that offset
-(`archive.cpp:154-172`).
+the first 4 MiB (`0x400000`) for any `0x52` byte and retest the
+signature starting at that offset. Readers are free to scan further, and
+rars scans 8 MiB, so a stub that one reader finds may be out of another
+reader's reach.
 
 ```
 CurPos   = tell()                          # file position where Buffer starts
@@ -84,12 +91,11 @@ for i in 0 .. ReadSize - 1:
 the ASCII marker `"RSFX"` at fixed file offset 28 (inside its MZ header
 region), specifically so RAR readers can distinguish a genuine RAR 1.4
 self-extractor from an arbitrary file that happens to contain `Rar!`
-bytes later in its body. The check at `archive.cpp:161-166` reads those
-four bytes directly by absolute offset — not relative to the signature
-match. `28 - CurPos` is simply the buffer-relative index of file
+bytes later in its body. The check reads those four bytes directly by
+absolute offset, not relative to the signature match. `28 - CurPos` is simply the buffer-relative index of file
 offset 28.
 
-**Gating conditions** (`archive.cpp:161`):
+**Gating conditions:**
 
 | Condition | Purpose |
 |-----------|---------|
@@ -126,14 +132,13 @@ because no legitimate stub approaches that size.
 
 After detecting RAR 1.4 at the archive start, the reader seeks back to
 offset 0 before parsing — the `RE~^` marker is part of the archive
-header, not a separate block (`archive.cpp:150`). RAR 1.5 and 5.0 do
+header, not a separate block. RAR 1.5 and 5.0 do
 not seek back because their markers are distinct blocks.
 
 ## 3. Header walk
 
-Entry point: `Archive::ReadHeader()` (`arcread.cpp:3-45`). Dispatches
-to `ReadHeader14`, `ReadHeader15`, or `ReadHeader50` based on the
-detected format. Each returns the number of bytes read (0 on end of
+A single entry point dispatches to the RAR 1.4, RAR 1.5-4.x or RAR 5.0
+header reader based on the detected format. Each returns the number of bytes read (0 on end of
 archive or fatal error) and sets `CurHeaderType` to the parsed block
 type.
 
@@ -176,7 +181,7 @@ block (e.g. end-of-archive marker) or a header-plus-payload block
 
 ### 3.3 Broken-block recovery
 
-If a block's CRC fails (`arcread.cpp:515-547`) the reader:
+If a block's CRC fails the reader:
 
 1. Sets `BrokenHeader = true`.
 2. Returns the block-size as-read anyway, so the outer loop can
