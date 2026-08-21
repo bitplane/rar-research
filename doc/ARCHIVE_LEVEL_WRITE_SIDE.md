@@ -251,8 +251,17 @@ definition at all and decodes its first symbol with the tables already
 loaded.
 
 **Unpack50 and Unpack70.** In RAR 5.0's block header (§11.2 of the RAR 5.0 spec), bit 7 of the
-flags byte is "table present". An encoder emitting the first LZ block of
-a solid-continuation file has three choices:
+flags byte is "table present".
+
+One case has no choice in it. The **first block of a stream** must set
+bit 7: a non-solid file, and the first file of a solid group, begin with
+no tables loaded, so there is nothing for `table_present = 0` to reuse
+and the decoder has to refuse the block. Clearing it there produces an
+archive no reader can extract, verified against RAR 7.12, UnRAR 7.20 and
+rars.
+
+For the first LZ block of a solid-continuation file, where tables really
+are already loaded, an encoder has three choices:
 
 - `table_present = 0`: reuse the previous block's Huffman tables. Cheap
   (~50 bytes saved) but only valid if the statistics haven't shifted.

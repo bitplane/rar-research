@@ -908,6 +908,24 @@ Each compressed block begins with a header read from the byte-aligned bitstream:
 | 6     | Last block flag. If set, this is the final block in the stream. |
 | 7     | Table present flag. If set, new Huffman tables follow. If clear, reuse previous tables. |
 
+**"Reuse previous tables" needs previous tables to exist.** A decoder
+starts a non-solid file, and the first file of a solid group, with no
+tables loaded. If the first block of that stream clears bit 7, there is
+nothing to reuse and the block cannot be decoded. Refuse it rather than
+decoding against a zeroed or stale table.
+
+Encoders must therefore set bit 7 on the first block of every non-solid
+stream, and on the first block of each solid group. Later blocks may
+clear it freely.
+
+Measured by clearing bit 7 on the first block of a compressed RAR 5 file
+and fixing up the block header's XOR checksum: RAR 7.12 and UnRAR 7.20
+both fail the member, and rars refuses the block outright with "RAR 5
+block reuses missing tables". The reference surfaces it as a data
+checksum failure rather than a structural one, so it appears to decode
+against whatever its table memory holds and produce wrong bytes. Refusing
+structurally is the safer of the two and reaches the same verdict.
+
 ### 11.3 Huffman Table Construction
 
 When the table-present flag is set, the block contains new Huffman tables encoded
