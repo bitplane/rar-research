@@ -450,6 +450,37 @@ For `FSREDIR_HARDLINK` and `FSREDIR_FILECOPY`, the `Name` field names a
 file **already extracted from the archive**, not a filesystem path. The
 encoder must emit the source file earlier in the archive stream.
 
+##### Header fields on a redirection entry
+
+A redirection entry carries no payload, but it does not signal that by
+leaving fields out. Measured across every redirection type, on WinRAR
+7.12 output (`-oi1:64` for the file copies) and on third-party archives
+in the rars tree:
+
+| Field | Value |
+|---|---|
+| `HFL_DATA` (head flag `0x0002`) | **set** |
+| `Data Size` | **present**, and zero |
+| `FHFL_CRC32` (file flag `0x0004`) | **set** |
+| `Data CRC32` | **`0x00000000`**, not the target's checksum |
+| `Compression Information` | `0`, so method 0 (stored) |
+
+The empty data area is spelled out as a zero-length one rather than
+omitted. An encoder that clears `HFL_DATA` and drops the `Data Size`
+vint is writing a shape no reference archive contains.
+
+`Unpacked Size` is the field that does carry information, and what it
+means depends on the type:
+
+| Type | `Unpacked Size` |
+|---|---|
+| `FSREDIR_UNIXSYMLINK`, `FSREDIR_WINSYMLINK`, `FSREDIR_JUNCTION` | Length in bytes of the target path string in the redirection record. Measured: 8 for a link to `file.txt`, 3 for a link to `dir`. |
+| `FSREDIR_HARDLINK`, `FSREDIR_FILECOPY` | Unpacked byte size of the target **file's contents**. Measured: 5 for a hardlink to a 5-byte `file.txt`, 1800 for a file copy of a 1800-byte source. |
+
+So the checksum for a file copy is not stored on the copy. Verification
+rests on the source entry, which carries the real CRC32 and the real
+data.
+
 **Oracles.** `rar50/wild/symlink.rar`, `rar50/wild/hardlink.rar` and
 `rar50/wild/rarfile_hlink.rar` in the rars tree. The resolution rules
 below:

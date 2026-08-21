@@ -1075,10 +1075,15 @@ Redirection Record type 0x05:
 | 0x0004 | `FSREDIR_HARDLINK` — hard link |
 | 0x0005 | `FSREDIR_FILECOPY` — reference to another file's content (deduplication) |
 
-The file header carrying this extra record should have `PackedSize = 0`
-(no data payload) for all types except `FILECOPY`, which points at
-another file within the same archive by name and still has its own
-separate hash.
+The file header carrying this extra record has `PackedSize = 0` for
+every type, `FILECOPY` included. Keep `HFL_DATA` set and write the zero
+rather than omitting the field, and leave `FHFL_CRC32` set with a
+checksum of `0x00000000`. That is what WinRAR emits for all five types;
+see §8 of the RAR 5.0 spec for the measurements.
+
+A file copy does **not** carry its own hash. `UnpackedSize` holds the
+target file's size, but the checksum stays zero and verification rests
+on the source entry.
 
 ### 5.2 Hardlinks
 
