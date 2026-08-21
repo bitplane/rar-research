@@ -1384,6 +1384,33 @@ chooses per file and the decoder switches codepaths based on the file's
 CompInfo bits 0–5. An archive may contain a mix of v0 and v1 files —
 most commonly when appending new files to an existing v0 solid stream.
 
+**Versions above 1 are refused, and the refusal is per file.** Bits 0–5
+hold six bits, so 62 values are unassigned. A decoder must treat any of
+them as an unknown compression method and decline the file rather than
+guess at a codepath. It should also stop trusting the dictionary fields,
+since their meaning is version-defined: with the version unknown, the
+window size is unknown too, and computing one from bits 10–19 invites an
+allocation driven by a number nothing validated.
+
+Measured by editing the version field of a compressed RAR 5.0 file header
+and fixing up the header CRC:
+
+| Version | RAR 7.12 and UnRAR 7.20 |
+|---|---|
+| 0 | extracts |
+| 1 | dispatches to Unpack70, then fails the checksum, since the stream is really v0 |
+| 2, 3, 63 | `Unknown method in <file>` |
+
+Version 1 failing on a checksum rather than a method error is the useful
+half of that: it shows the field really does pick the decoder, so an
+unknown value has no decoder to pick.
+
+A **stored** file (method 0) is the exception, and it is worth handling.
+The same edit applied to a stored member extracts cleanly on both readers
+and on rars, because nothing has to be decompressed and the algorithm
+version never comes up. Refuse on the decompressor, not at header parse
+time.
+
 ##### Version selection rule
 
 ```
