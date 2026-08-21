@@ -436,7 +436,7 @@ conventional but is not the canonical RAR 5.0 form. Instead:
    the redirection record's `Flags & 0x0001` (`FHEXTRA_REDIR_DIR`)
    instead.
 
-The redirection types from `FSREDIR_*` (`headers.hpp:110`):
+The redirection types from `FSREDIR_*`:
 
 | vint   | Constant              | Notes |
 |--------|-----------------------|-------|
@@ -448,9 +448,11 @@ The redirection types from `FSREDIR_*` (`headers.hpp:110`):
 
 For `FSREDIR_HARDLINK` and `FSREDIR_FILECOPY`, the `Name` field names a
 file **already extracted from the archive**, not a filesystem path. The
-encoder must emit the source file earlier in the archive stream. Resolution
-rules verified against `_refs/unrar/extract.cpp:830-855` and
-`ExtractFileCopy` (extract.cpp:1088):
+encoder must emit the source file earlier in the archive stream.
+
+**Oracles.** `rar50/wild/symlink.rar`, `rar50/wild/hardlink.rar` and
+`rar50/wild/rarfile_hlink.rar` in the rars tree. The resolution rules
+below:
 
 - **String comparison is verbatim**, byte-for-byte after slash conversion.
   No case-folding, no Unicode normalization. A reference to `Foo/bar.txt`
@@ -470,8 +472,8 @@ rules verified against `_refs/unrar/extract.cpp:830-855` and
   multi-volume splits don't affect this — they only affect the order in
   which the bytes hit disk, which is already serialized by the read-side
   walk.
-- **`FSREDIR_FILECOPY` may use temporary-source caching** (`RefList` in
-  extract.cpp): if the source was extracted to a temp file (because the
+- **`FSREDIR_FILECOPY` may use temporary-source caching**: if the
+  source was extracted to a temp file (because the
   user requested no permanent extraction) the file copy can rename or
   copy from that temp. This is an optimization, not a wire-format effect.
 - **`DirTarget` flag (`0x0001`)** is informational for symlinks/junctions
@@ -774,8 +776,10 @@ per cached header:
 | HeaderSize   | vint           | Size of the cached header in bytes. Must be ≤ `MAX_HEADER_SIZE_RAR5` (0x200000). |
 | HeaderData   | HeaderSize bytes | Verbatim copy of the original cached header. |
 
-Verified against `_refs/unrar/qopen.cpp` (`ReadRaw` / `ReadNext`) and
-described from the writer's perspective in `ARCHIVE_LEVEL_WRITE_SIDE.md` §4.1.
+Oracle: `rar50/winrar721_header_encrypted_quickopen.rar` in the rars
+tree, a WinRAR 7.21 archive carrying a Quick Open cache under header
+encryption (password `Password`, capital P). Described from the writer's perspective in
+`ARCHIVE_LEVEL_WRITE_SIDE.md` §4.1.
 
 **Security note:** Use the same access pattern (quick open vs. direct) for both
 displaying and extracting files. Divergence could allow showing one filename while
@@ -805,8 +809,8 @@ Dictionary size = `(fraction + 32) << (power + 12)` bytes.
 The minimum effective window size is 256 KB (`1 << 18`).
 
 **Unpack70 vs Unpack50 — the only wire-format difference is the
-distance-alphabet size.** Verified against `_refs/unrar/unpack.cpp:184`
-(`ExtraDist = (Method == VER_PACK7)`) and `_refs/unrar/compress.hpp:24-29`:
+distance-alphabet size.** The algorithm bit in the block header selects
+between them:
 
 | Algorithm | Distance alphabet | Concatenated table size | Max dictionary |
 |-----------|------------------|------------------------|----------------|
@@ -821,11 +825,17 @@ implementation switches on the algorithm bit only when reading the
 Distance code-length section of the level table and when interpreting
 distance slots ≥ 64.
 
+**No oracle for algorithm 1.** Everything above is unverified against a
+real archive. RAR 7.12 only selects Unpack70 for dictionaries above
+4 GiB: `-mdx64m` produces a byte-identical archive to `-md64m`, both
+algorithm 0. Producing one needs a machine that can hold the dictionary,
+so treat the Unpack70 row as the one claim in §11 with nothing behind
+it.
+
 For very large dictionaries (>~256 MiB) where a single contiguous buffer
-allocation may fail, unrar uses a `FragmentedWindow`
-(`_refs/unrar/unpack50frag.cpp`) that splits the window across multiple
-heap blocks. This is purely an allocation strategy — the wire format
-sees a flat circular window in either case.
+allocation may fail, a reader may split the window across multiple heap
+blocks rather than allocating it flat. This is purely an allocation
+strategy, and the wire format sees a flat circular window either way.
 
 ### 11.2 Compressed Block Structure
 
@@ -920,7 +930,6 @@ read all the bits announced by the block header (`Block Size` bytes, with
 sub-byte precision from the bit-position field in the flags). On reaching
 that boundary the decoder either reads the next block header (if the current
 block did not have the "last block in file" flag set) or stops (if it did).
-Verified against `_refs/unrar/unpack50.cpp` (`Unpack5` main loop, lines 14-47).
 A reader must therefore track `BlockBitSize` exactly — overshooting by even
 one symbol will mis-align all subsequent block headers.
 
@@ -1538,9 +1547,9 @@ Sanity checks:
   zero-extended by the high-bit groups above. For larger values, the
   last byte carries real payload. Both forms are legal on the wire as
   long as `num_bytes ≤ 10`.
-- The decoder is tolerant of non-minimal encodings by construction
-  (`rawread.cpp:114-127` — it just accumulates 7-bit groups until it
-  sees a byte without the continuation bit).
+- The decoder is tolerant of non-minimal encodings by construction: it
+  accumulates 7-bit groups until it sees a byte without the continuation
+  bit, and never checks whether a shorter encoding existed.
 
 #### 11.12.3 Write recipe
 
