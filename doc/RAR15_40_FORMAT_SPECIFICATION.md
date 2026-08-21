@@ -682,7 +682,7 @@ Known subblock names:
 | `STM` | NTFS alternate data stream. |
 | `ACL` | NTFS access control list. |
 | `EA`  | OS/2 extended attributes. |
-| `UO`  | Unix file owner (user/group). |
+| `UOW` | Unix file owner (user/group). |
 | `MAC` | Mac OS file info. |
 | `BEEA` | BeOS extended attributes. |
 | `NTACL` | NTFS ACL (alternative form). |
@@ -690,6 +690,33 @@ Known subblock names:
 
 Subblocks immediately follow the file header they are associated with, or follow
 the archive header for archive-level metadata (e.g., archive comment).
+
+#### The SubData area
+
+A `0x7A` subblock may carry a payload **between the name and the salt**,
+inside the header rather than in the data area. Nothing declares its
+length; derive it from what is left over:
+
+```
+SubDataSize = HeadSize - SIZEOF_FILEHEAD3 - NameSize - (LHD_SALT ? SIZE_SALT30 : 0)
+```
+
+with `SIZEOF_FILEHEAD3 = 32` and `SIZE_SALT30 = 8`. If the result is
+zero there is no SubData; a negative result means a malformed header.
+The layout is therefore:
+
+```
+[32-byte file-header fields][FILE_NAME][SubData][SALT if LHD_SALT]
+```
+
+This is where `UOW` keeps its owner and group strings, `STM` its stream
+name, and `CMT` its flags. A reader that jumps straight from the name to
+the salt loses all of it, and a reader that assumes SubData is absent
+will mis-locate the salt on an encrypted subblock.
+
+**Measured.** `rar393 a -ow` over one file emits a `UOW` subblock with
+`HeadSize` 42, `NameSize` 3 and no salt, giving `42 - 32 - 3 = 7` bytes
+of SubData, which read out as `gaz\0gaz`: owner, NUL, group.
 
 ---
 
@@ -2474,11 +2501,22 @@ block's header bits without any alignment — the decoder reads them straight
 after the 269 symbol.
 
 **Repeat distance buffer update.** Both encoder and decoder maintain
-`OldDist[0..3]` and `OldDistPtr`. On every non-repeat-match, push the new
-distance to `OldDist[OldDistPtr++]` (modulo 4). On a repeat-distance match,
-the decoder does NOT rotate — the distance value stays where it was — so the
-encoder must not rotate either. `LastLength` / `LastDist` are updated on
-every match (repeat or new).
+`OldDist[0..3]` and `OldDistPtr`. Push the distance to
+`OldDist[OldDistPtr++]` (modulo 4) on **every** match, repeat matches
+included. Selecting `OldDist[1]` and re-pushing it makes the ring
+`[b, a, b, c]` from `[a, b, c, d]`, so the same distance now occupies
+two slots and the oldest is evicted. `LastLength` / `LastDist` are
+likewise updated on every match.
+
+An encoder that skips the push on repeat matches desynchronises its
+`OldDistPtr` from the decoder's on the very first one, and every repeat
+match after that selects the wrong distance.
+
+This is where RAR 2.0 and RAR 3.0 differ, and it is easy to carry the
+wrong model across. RAR 2.0 is a circular buffer with a moving write
+pointer. RAR 3.0 shifts in place so that `OldDist[0]` is always the most
+recent, moving the selected entry to the front. The two produce the same
+selection for `OldDist[0]` and diverge after that.
 
 #### 16.11.6 Audio mode encoding
 
@@ -2813,11 +2851,17 @@ The main decode loop reads symbols from the MainCode Huffman table:
 
 **Literal (symbol < 256):** Output the byte directly.
 
-**New block / filter (symbol == 256):** Read 1 bit:
-- If 1: new file marker. Read 1 more bit for "new table" flag. Block ends.
-- If 0: RARVM filter follows (see Section 20).
+**End of block (symbol == 256):** Symbol 256 is only ever the block
+terminator; it never introduces a filter. Read 1 bit:
+- If `1`: same file, a new table definition follows immediately here.
+- If `0`: read 1 more bit. `0` means the next file keeps the current
+  tables, `1` means the next file opens with a new table.
 
-**Filter trigger (symbol == 257):** Read a filter definition from the bitstream.
+So the three encodings are `1`, `00` and `01`, and the two-bit forms
+both end the file.
+
+**Filter trigger (symbol == 257):** Read a filter definition from the
+bitstream. This is the *only* inline filter trigger in an LZ block.
 
 **Last-length repeat (symbol == 258):** Repeat the previous match using
 `lastlength` bytes from distance `lastoffset`. If `lastlength` is 0, ignored.
@@ -3138,7 +3182,7 @@ Shkarin) as an alternative to LZ compression. The choice is per-block.
 The PPMd block opens with a single byte at the (already byte-aligned)
 header position. Bit 7 of this byte was the §18.1 mode indicator
 (value `1` selecting the PPMd path); the lower 7 bits carry the PPMd
-parameter flags. The byte is consumed by `ModelPPM::DecodeInit` via
+parameter flags. The byte is consumed by the PPMd model's decoder init via
 `UnpackRead->GetChar()` — i.e. the **whole byte** is read at once via
 the byte stream, not via the bit-stream cursor.
 
