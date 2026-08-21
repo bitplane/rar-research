@@ -480,21 +480,36 @@ Old scheme (RAR 2.x default):
     volume 2: archive.r00
     volume 3: archive.r01
     ...
-    volume 100: archive.r98
-    (can only go to r99 — 100 volumes max)
+    volume 101: archive.r99
+    volume 102: archive.s00      <- letter advances, digits restart
+    volume 103: archive.s01
+    ...
 
 New scheme (RAR 3.0+ default):
     volume 1: archive.part01.rar (or part1, part001 etc.)
     volume 2: archive.part02.rar
     ...
-    (up to 99/999/... depending on digit count in volume 1's name)
+    volume 10: archive.part10.rar     <- width grows as needed
 ```
 
-a public RAR reader handles both schemes. The digit-
-count in the first volume's filename determines how many volumes the
-scheme supports before overflowing; the encoder should pick enough digits
-up front (e.g. `partNNN` for expected 100+ volumes). The archive header
-flag `0x0010` (MHD_NEWNUMBERING) indicates new-scheme names.
+**Neither scheme caps at 100 volumes.** The old one does not stop at
+`.r99`: the letter advances and the digits restart, so the volume after
+`.r99` is `.s00`. Measured by splitting 230 KB into 2 KB volumes with
+RAR 3.93, which runs `... r98 r99 s00 s01 ...` across 117 files. (Not
+`.a00`. The letter steps forward from wherever it is.)
+
+The new scheme is not bounded by the digit width of the first volume
+either. A reader follows the numbering as it widens, so a set named
+`part1 … part9, part10 … part16` extracts as one archive with a
+byte-identical payload, which was measured on a renamed set. Picking a
+zero-padded width up front is still worth doing, because it makes the
+files sort lexically in the order they must be read, but it is a
+convention rather than a limit. RAR picks the width from the volume
+count it expects: the same 230 KB input at 2 KB per volume comes out as
+`part001 … part117`.
+
+The archive header flag `0x0010` (MHD_NEWNUMBERING) indicates
+new-scheme names.
 
 ### 2.5 Encoder-side state management across volumes
 
