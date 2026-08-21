@@ -22,6 +22,51 @@ the decoder side.
 
 ---
 
+## 0. The 127-character password ceiling (all versions)
+
+Before any key derivation in this document runs, the password is cut to
+its **first 127 characters**. This applies to every version from RAR 1.3
+through RAR 5.0. Reference builds copy the password into a 128-element
+`wchar_t` buffer and keep 127 entries plus a terminator, so nothing past
+that reaches a KDF or a cipher init.
+
+An encoder that skips the clamp derives a key no official tool can
+reproduce, and the failure is silent and one-way: the archive it writes
+cannot be opened by WinRAR with the password the user typed, nor with any
+prefix of it, because WinRAR truncates what the user types while the
+encoder did not truncate what it stored. Nothing the user can enter
+bridges the gap. Reading is affected the same way, so an encoder that
+skips the clamp also fails to open WinRAR's archives when handed the
+correct long password.
+
+Measured against RAR 7.12, which was asked to create an archive with a
+133-character password:
+
+| password offered at extraction | result |
+|---|---|
+| all 133 characters | opens |
+| first 127 characters | opens |
+| first 126 characters | rejected |
+
+Confirmed at the same boundary for RAR 3.x against RAR 3.93.
+
+**A character is not a byte, and the reference is not self-consistent
+about what it is.** The Linux build has a 4-byte `wchar_t` and so keeps
+127 Unicode scalars; the Windows build has a 2-byte `wchar_t` and keeps
+127 UTF-16 code units. For a password holding astral characters past
+position 127 the two derive **different keys from each other**, so no
+single rule matches both. Measured with a 140-emoji password: truncating
+to 127 scalars opens the archive under RAR 7.12 on Linux and is rejected
+by WinRAR 7.21's `Rar.exe` under wine, with ASCII controls passing on
+both to rule out command-line mangling.
+
+For every password that stays inside the BMP, which is effectively all of
+them, the two rules coincide and 127 is 127. Implementations that cannot
+represent a lone surrogate, which includes anything built on UTF-8
+strings, should count scalars.
+
+---
+
 ## 1. RAR 1.3 (CRYPT_RAR13)
 
 Key derivation: 3 bytes from the password. Decryption is a position-dependent
