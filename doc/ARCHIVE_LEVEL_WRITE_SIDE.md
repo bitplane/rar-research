@@ -838,6 +838,30 @@ A reader should expose the comment as a native string (UTF-8 or UTF-16
 depending on platform) after charset decode, not the raw bytes. Callers
 that care about the original byte form can re-encode.
 
+**Ctrl+Z truncation is a display quirk of old readers, and it is gone.**
+Vintage tools stopped rendering a comment at the first `0x1A`, the DOS
+end-of-file character, so anything after it was invisible. Current ones
+print the lot.
+
+Measured with a comment reading `VISIBLE PART\x1aHIDDEN AFTER CTRL-Z`
+in a RAR 1.5 archive:
+
+| Reader | Rendered |
+|---|---|
+| WinRAR 3.00, RAR 3.93 banner | `VISIBLE PART` |
+| RAR 3.93 detail line | full text |
+| RAR 7.12, unrar 7.20 | full text, in every path |
+
+RAR 3.93 prints the comment twice and truncates only the banner, which
+is a fair warning against treating "what the tool showed me" as the
+comment. The stored bytes were never affected by any of this: the
+truncation was in rendering only, and a reader returning the comment as
+data should return all of it.
+
+Worth knowing if you are looking at old archives. Text that a 2010 tool
+hid after a `0x1A` is plainly visible in a 2025 one, so an archive whose
+comment looked innocuous then may not read the same way now.
+
 **Encrypted comments.** When the archive has header encryption
 (RAR 5.0 archive encryption header, or RAR 3.x/4.x `MHD_PASSWORD`),
 the CMT service header's byte payload is encrypted along with the rest
