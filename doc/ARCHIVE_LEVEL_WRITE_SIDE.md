@@ -993,52 +993,77 @@ Encoder rule: pick the format that matches the source filesystem. On
 Unix, prefer Unix nanosecond format; on Windows, prefer Windows FILETIME.
 Mixing formats across files in the same archive is legal but confusing.
 
-### 5.4 Windows ACLs (service header `"ACL"`)
+### 5.4 Windows ACLs (the `ACL` record)
 
-The ACL service header carries a Windows `SECURITY_DESCRIPTOR` in
-self-relative form, written verbatim to the target file via Win32
-`SetFileSecurity()` at extract time. Verified against
-`_refs/unrar/win32acl.cpp` (`ExtractACL20`, `ExtractACL`).
+The ACL record carries a Windows `SECURITY_DESCRIPTOR` in self-relative
+form. RAR never parses it: the encoder stores the bytes the host
+filesystem hands it and the decoder writes them back unchanged.
 
-**RAR 2.x wire format** (`HEAD3_NEWSUB = 0x7a`, `EAHeader` extending
-`SubBlockHeader`, body bytes after the standard 7-byte block header):
+**Oracles:** `fixtures/acl/` holds the same one file archived by WinRAR
+2.90, 3.00 and 7.21 with `-ow`. See that directory's README for the
+byte-level walk-through.
+
+**Two shapes in RAR 1.5-4.x, not one.** The block type changed between
+2.90 and 3.00:
+
+| Writer | Block type | Notes |
+|---|---|---|
+| WinRAR 2.90 | `0x77` (`HEAD3_OLDSERVICE`) | `SubType` `0x0104`, `Level` `0` follow the base header |
+| WinRAR 3.00 and later | `0x7a` (`HEAD3_NEWSUB`) | service header, name `"ACL"` |
+
+A reader that handles only `0x7a` silently ignores every RAR 2.x ACL,
+which is what rars does today.
+
+**RAR 2.x wire format** (`0x77`, `EAHeader` extending `SubBlockHeader`).
+Offsets are from the start of the block. The subblock header is **14**
+bytes, not the 7 of a plain block header, so the ACL-specific tail
+begins at +14:
 
 | Offset | Field    | Type    | Notes |
 |--------|----------|---------|-------|
-| +0     | UnpSize  | uint32  | Unpacked SECURITY_DESCRIPTOR size in bytes. |
-| +4     | UnpVer   | uint8   | Unpack codec version (must be ≤ `VER_PACK`). |
-| +5     | Method   | uint8   | Compression method, must be `0x31..0x35` (no stored mode for ACLs). |
-| +6     | EACRC    | uint32  | CRC32 of the unpacked SECURITY_DESCRIPTOR. |
-| +10    | DataSize | bytes   | Inherited from the standard block header; compressed payload follows. |
-
-After decompression: the bytes are a Windows
-`SECURITY_DESCRIPTOR` self-relative blob. The reader passes them
-unchanged to `SetFileSecurity` with `OWNER | GROUP | DACL` security
-information (plus `SACL` if the user has `SeSecurityPrivilege`). The
-RAR format does not parse the SECURITY_DESCRIPTOR internals — the
-encoder stores the bytes from `GetFileSecurity` and the decoder writes
-them back via `SetFileSecurity`.
+| +0     | HEAD_CRC   | uint16 | CRC16 over +2 to end of header. |
+| +2     | HEAD_TYPE  | uint8  | `0x77`. |
+| +3     | HEAD_FLAGS | uint16 | `0xC000` as written by WinRAR 2.90. |
+| +5     | HEAD_SIZE  | uint16 | 24. |
+| +7     | ADD_SIZE   | uint32 | Packed descriptor bytes following the header. |
+| +11    | SubType    | uint16 | `0x0104` (`NTACL_HEAD`). |
+| +13    | Level      | uint8  | `0`. |
+| +14    | UnpSize    | uint32 | Unpacked SECURITY_DESCRIPTOR size. |
+| +18    | UnpVer     | uint8  | Unpack codec version; 2.90 writes 20. |
+| +19    | Method     | uint8  | `0x31..0x35`; 2.90 writes `0x33`. |
+| +20    | EACRC      | uint32 | CRC32 of the unpacked SECURITY_DESCRIPTOR. |
 
 **RAR 5.0 wire format**: a service header named `"ACL"` whose data
-area carries the same SECURITY_DESCRIPTOR self-relative bytes
-(possibly compressed per the standard service-header `Method`). The
-preceding file header's owner is the file the ACL applies to (per
+area carries the same self-relative bytes, compressed per the standard
+service-header fields. `UnpSize` and `DataCRC` carry the same meaning as
+`UnpSize` and `EACRC` above, and the fixtures confirm it: WinRAR 7.21
+and WinRAR 2.90 store `160` and `0x4EE02053` for the same descriptor.
+The preceding file header names the file the ACL applies to (per the
 ACL/STM placement rule in §3.2).
 
-Encoder responsibility: extract the SECURITY_DESCRIPTOR via
-`GetFileSecurity` (Win32) at archive time, store as the service
-header's payload. On non-Windows hosts the doc convention is to skip
-ACL emission rather than synthesize an equivalent.
+Encoder responsibility: read the descriptor from the host filesystem at
+archive time and store it as the record's payload. On non-Windows hosts
+the convention is to skip ACL emission rather than synthesise an
+equivalent. What a reader does with the bytes at extract time is host
+policy, not wire format, and is out of scope here.
 
 ### 5.4.1 NTFS Alternate Data Streams (service header `"STM"`)
 
 The STM service header carries the contents of one NTFS Alternate Data
-Stream (ADS) attached to the previously-emitted file. Verified against
-`_refs/unrar/win32stm.cpp` (`ExtractStreams20`, `ExtractStreams`,
-`GetStreamNameNTFS`).
+Stream (ADS) attached to the previously-emitted file.
 
-**RAR 2.x wire format** (`HEAD3_NEWSUB = 0x7a`, `StreamHeader` extending
-`SubBlockHeader`):
+**No oracle.** Unlike §5.4, this section is unverified. The route that
+produced the ACL fixtures does not work here: wine has no NTFS streams,
+so creating `NAME:stream` yields a literal file with a colon in its name
+and `Rar.exe a -os` archives the host file alone. An `STM` fixture needs
+a real NTFS volume. Treat the layout below as unconfirmed. The
+`0x77` / `0x7a` split in §5.4 is a container-level change across the
+2.90-to-3.00 boundary rather than anything specific to ACLs, so it
+probably applies here too, but that is a guess and nothing here has
+measured it.
+
+**RAR 2.x wire format** (`StreamHeader` extending `SubBlockHeader`,
+offsets from the start of the stream-specific tail):
 
 | Offset | Field          | Type            | Notes |
 |--------|----------------|-----------------|-------|
@@ -1050,17 +1075,18 @@ Stream (ADS) attached to the previously-emitted file. Verified against
 | +12    | StreamName     | StreamNameSize bytes | ADS name including the leading `:` (e.g. `:Zone.Identifier`). Slashes (`\` or `/`) are not allowed. |
 | +12+SNS| DataSize       | bytes           | Inherited from block header; compressed ADS contents. |
 
-After decompression: raw bytes of the ADS, written to
-`host_file_path + StreamName` via Win32 `CreateFile`. The combined
-path forms a colon-suffixed NTFS path (e.g. `C:\file.txt:Zone.Identifier`).
+After decompression: raw bytes of the ADS. The extract-time host path
+is `host_file_path + StreamName`, a colon-suffixed NTFS path such as
+`C:\file.txt:Zone.Identifier`.
 
 **RAR 5.0 wire format**: a service header named `"STM"` whose
-**Sub-data extra-area field** carries the stream name (UTF-8 in RAR 5.0,
-raw OEM in RAR 2.x — see `GetStreamNameNTFS` in `win32stm.cpp:218`),
-and whose data area carries the ADS content. The preceding file
-header is the host file.
+**Sub-data extra-area field** carries the stream name, UTF-8 in RAR 5.0
+and raw OEM in RAR 2.x, and whose data area carries the ADS content. The
+preceding file header is the host file. Note that the name lives in the
+extra-area record, not in the service header's own `Name` field, which
+is the fixed string `"STM"`.
 
-**Security rule (`IsNtfsProhibitedStream`).** Reader must reject
+**Security rule.** A reader must reject
 any stream name containing more than one colon. This blocks shenanigans
 like:
 
