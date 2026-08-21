@@ -343,27 +343,34 @@ Key facts an implementer needs:
 ### 4.3 `sha1_process_rar29` — the RAR-specific SHA-1 quirk
 
 **This is the single biggest pitfall for clean-room implementers.**
-RAR 3.x's KDF does *not* use vanilla SHA-1 for the password hashing
-loop. Verified at `_refs/unrar/sha1.cpp:146-164`:
+RAR 3.x's KDF does *not* use vanilla SHA-1 for the password hashing loop.
+Each full 64-byte block of the input buffer is hashed normally, and then
+overwritten:
 
-```c
-void sha1_process_rar29(sha1_context *context, const unsigned char *data, size_t len)
-{
-    /* ... feed `data` into context like normal SHA-1 ... BUT: */
-    for ( ; i + 63 < len; i += 64) {
-        SHA1Transform(context->state, workspace, data+i, false);
-        for (uint k = 0; k < 16; k++)
-            RawPut4(workspace[k], (void*)(data+i+k*4));   /* WRITE BACK */
-    }
-}
+```python
+def process_block(state, data, i):
+    w = [0] * 80
+    for k in range(16):                                  # big-endian in
+        w[k] = int.from_bytes(data[i + k*4 : i + k*4 + 4], "big")
+    for k in range(16, 80):
+        w[k] = rotl32(w[k-3] ^ w[k-8] ^ w[k-14] ^ w[k-16], 1)
+    sha1_rounds(state, w)                                # ordinary SHA-1
+    for k in range(16):                                  # little-endian out
+        data[i + k*4 : i + k*4 + 4] = w[64 + k].to_bytes(4, "little")
 ```
 
-After processing each 64-byte block of the input buffer, the
-SHA-1 message-schedule words (`workspace[0..15]`) are **written back
-into the input buffer** in little-endian, replacing the original
-bytes. On the next loop iteration of the KDF (`I+1`), the modified
-buffer is hashed again — so the password+salt buffer is destructively
-mutated by the chain.
+The words written back are `w[64..79]`, the **last** sixteen of the
+expanded schedule, and they go back little-endian even though they were
+read big-endian. Getting this from the C is a trap: it expands the
+schedule in a sixteen-word circular buffer, so the array named for the
+message words holds `w[64..79]` by the time the transform returns. Write
+back the byteswapped input block instead and the chain diverges on its
+second iteration.
+
+On the next loop iteration of the KDF the mutated buffer is hashed again,
+so the password+salt buffer is destroyed as the chain runs. Checked by
+decrypting a RAR 3.93 archive made with a 52-character password, where
+the buffer is 112 bytes and the write-back therefore fires.
 
 Implications:
 
