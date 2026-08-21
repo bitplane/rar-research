@@ -751,7 +751,7 @@ dictionary. Practical rule:
 | +7     | UnpSize   | uint16 | Uncompressed comment length. Max 0xFFFF (64 KB inline); archives > 64 KB use the service-header form. |
 | +9     | UnpVer    | uint8  | Minimum decoder version (15–current). |
 | +10    | Method    | uint8  | Compression method `0x30..0x35`. |
-| +11    | CommCRC   | uint16 | Low 16 bits of `~CRC32(0xFFFFFFFF, comment_bytes) & 0xFFFF`. Computed over the uncompressed comment for stored, or unpacked bytes for compressed. |
+| +11    | CommCRC   | uint16 | `crc32(comment_bytes) & 0xFFFF`, a plain finalized CRC-32. Computed over the uncompressed comment for stored, or unpacked bytes for compressed. |
 
 The `UnpSize` field is a `uint16`, capping the RAR 2.9-style inline
 comment at 64 KB. Archives needing a larger comment must use the
@@ -836,9 +836,18 @@ A stored comment (`method == 0x30`) bypasses decompression entirely.
 - **RAR 1.4 inline:** no separate comment CRC is present. Validate by
   respecting the main-header `HeadSize`, the declared comment lengths,
   and the Unpack15 output bound for packed comments.
-- **RAR 2.9 inline (`HEAD3_CMT`):** verify the 16-bit `CommCRC`
-  against the low 16 bits of `~CRC32(0xFFFFFFFF, unpacked_comment)`.
-  Computed over the *uncompressed* comment regardless of method.
+- **RAR 2.9 inline (`HEAD3_CMT`):** verify the 16-bit `CommCRC` against
+  `crc32(unpacked_comment) & 0xFFFF`, computed over the *uncompressed*
+  comment regardless of method.
+
+  Do not invert. Standard CRC-32 routines (zlib, Python's `binascii`,
+  the usual Rust crates) already apply the final `XOR 0xFFFFFFFF`, so
+  writing `~crc32(...)` on top of one inverts twice and yields a value
+  no reader accepts. Measured on WinRAR 2.02's own archives, across the
+  main-header comment and both file comments in
+  `fixtures/2.02/rar202-comment-nopsw.rar`: `crc32(text) & 0xFFFF` reproduces
+  every stored `CommCRC`, and `~crc32(text) & 0xFFFF` reproduces none.
+  `INTEGRITY_WRITE_SIDE.md` §8.1 makes the same point for `HEAD_CRC`.
 - **RAR 3.0+ service header form:** the enclosing service header
   carries the standard block `Header CRC32`; the payload uses whatever
   file-level hash the encoder attached (`FHFL_CRC32` or the
