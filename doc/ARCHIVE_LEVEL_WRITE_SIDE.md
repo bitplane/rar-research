@@ -257,8 +257,9 @@ a solid-continuation file has three choices:
 - `table_present = 0`: reuse the previous block's Huffman tables. Cheap
   (~50 bytes saved) but only valid if the statistics haven't shifted.
 - `table_present = 1` with full 20-symbol level table: new tables. Safe.
-- `table_present = 1` restating the previous lengths: degenerate case —
-  emits a new table identical to the previous one. Pointless but valid.
+- `table_present = 1` restating the previous lengths: a degenerate case
+  that emits a new table identical to the previous one. Pointless but
+  valid.
 
 **Unpack50 does not delta-encode against the previous table.** That is
 the RAR 2.0 and RAR 2.9 mechanism, and it does not carry forward. In
