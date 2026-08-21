@@ -48,6 +48,46 @@ host separator internally before applying any path-component logic.
 Comparing `../` against `..\\` across OS boundaries is the #1 source
 of sanitizer bypasses.
 
+### 2.1 A backslash in a RAR 5.0 name is not a separator
+
+RAR 5.0 uses `/` for every host, so a `\` that survives into a stored
+name is a literal character rather than a delimiter. Unix filesystems
+accept it in a filename; Windows does not.
+
+Measured by patching a literal backslash into a stored name and
+extracting on both platforms:
+
+| Archive `Host OS` | Extracted on Windows | Extracted on Unix |
+|---|---|---|
+| 1 (Unix) | `sub_nam.t` | `sub\nam.t`, kept verbatim |
+| 0 (Windows) | `sub_nam.t` | `sub_nam.t` |
+
+Two rules fall out, and both are needed:
+
+- **Extracting on Windows, always replace `\` with `_`.** The character
+  cannot appear in a Windows filename at all, so the host OS recorded in
+  the archive makes no difference.
+- **Extracting on Unix, replace `\` with `_` only for a Windows-host
+  entry.** There the byte came from a platform where it meant a
+  separator, and flattening it keeps one archive entry as one file. For
+  a Unix-host entry, keep it: it is an ordinary character in the name
+  the archive means to store.
+
+**Never split a RAR 5.0 name on `\`.** Doing so invents directory levels
+the archive never declared, turning one entry into a tree. Verified
+against RAR 7.12 and WinRAR 7.21's `Rar.exe`: neither creates a
+directory for `sub\nam.t` on any host-OS combination.
+
+This is the opposite of RAR 1.5–4.x, where `\` **is** the wire
+separator and splitting on it is correct. A reader that shares one path
+routine across formats has to branch on the format here.
+
+Traversal is unaffected either way. A name like `..\..\pwn` reaches the
+component checks in §3 as either one literal component or as `.._.._pwn`,
+and neither escapes the output directory. Measured on RAR 7.12: the
+Unix-host form lands as a file named `..\..\pwn` and the Windows-host
+form as `.._.._pwn`, both inside the extraction directory.
+
 ## 3. ConvertPath — the path-level sanitizer
 
 Applied to every filename from a file header before any filesystem

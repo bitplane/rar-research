@@ -463,6 +463,14 @@ For `FSREDIR_HARDLINK` and `FSREDIR_FILECOPY`, the `Name` field names a
 file **already extracted from the archive**, not a filesystem path. The
 encoder must emit the source file earlier in the archive stream.
 
+**A backslash in a RAR 5.0 name is a literal character.** `/` is the
+separator for every host, so `\` never delimits anything here. Readers
+replace it with `_` when extracting on Windows, where the character is
+illegal in a filename, and Unix readers do the same only for
+Windows-host entries while keeping it verbatim for Unix-host ones. No
+reader splits the name on it. See `PATH_SANITIZATION.md` §2.1 for the
+measured matrix.
+
 ##### Header fields on a redirection entry
 
 A redirection entry carries no payload, but it does not signal that by
