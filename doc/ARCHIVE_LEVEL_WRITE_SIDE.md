@@ -400,10 +400,21 @@ for each source file to archive:
 
 Key observations:
 
-- **The cut point is arbitrary at byte granularity.** The compressed
-  stream simply stops at any byte boundary and resumes at the same byte
-  position in the next volume. No padding, no realignment, no flushing.
-  The decoder reassembles the compressed stream as if it were continuous.
+- **The cut point is arbitrary at byte granularity, in the data area
+  only.** The compressed stream simply stops at any byte boundary and
+  resumes at the same byte position in the next volume. No padding, no
+  realignment, no flushing. The decoder reassembles the compressed stream
+  as if it were continuous.
+
+  **Headers are the exception, and it is absolute.** A block header
+  never crosses a volume boundary. A reader parses headers from the
+  volume it is holding and switches volumes only while reading a data
+  area, so a header split across the cut reads short and the archive is
+  reported as truncated. Before writing any block, an encoder compares
+  the header's size against the space left in the volume, and if it does
+  not fit, closes the volume with its end-of-archive block and starts the
+  header at the top of the next one. This binds the file and service
+  headers, the end-of-archive block, and the per-volume main header.
 
   This applies uniformly across codecs:
 
