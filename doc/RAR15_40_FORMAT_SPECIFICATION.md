@@ -591,6 +591,18 @@ then the `ADD_SIZE`
 payload in the order: data CRC32 (4 bytes), volume number (2 bytes),
 rev-space (7 bytes). Absence of a flag means its bytes are omitted.
 
+**What the data CRC32 covers.** Every byte of this volume file from offset 0
+up to, but not including, the first byte of this end-of-archive header. That
+start is offset 0 of the file, not the archive marker: an SFX stub is inside
+the range. The end-of-archive header itself, from its own `HEAD_CRC` onwards,
+is outside it.
+
+So an encoder computes it over everything it has written to the volume at the
+moment it is about to write the end block, and a reader checks it by hashing
+the file up to the offset where it found that block. Include one byte of the
+end header, or start after an SFX stub, and every reader calls the volume
+corrupt.
+
 If `HEAD_FLAGS & 0x8000`, an ADD_SIZE field follows at offset +7.
 
 RAR stops reading after this header. For multi-volume archives, the presence of
