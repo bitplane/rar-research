@@ -335,7 +335,7 @@ before writing. Safe policies are:
 Silent overwrite is unsafe. It lets a hostile archive hide a safe-looking file
 behind a later dangerous one after sanitization.
 
-## 6.5 Archive text printed to a terminal
+### 6.5 Archive text printed to a terminal
 
 Names are not the only attacker-controlled text a reader prints. Archive and
 file comments (`CMT` service records in RAR 5.0, `COMM_HEAD` blocks before it)
