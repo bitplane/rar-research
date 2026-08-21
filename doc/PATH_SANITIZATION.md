@@ -294,6 +294,25 @@ Apply the same safety checks to all three:
   Validate the target has already been extracted and lives inside
   `ExtrPath`; never create a hardlink to anything outside the root.
 
+**Writing the reparse point.** Once a junction or Windows symlink has passed
+those checks, the target string still cannot be written to disk as it stands.
+The `REPARSE_DATA_BUFFER` holds two strings and they are not the same text:
+
+- `SubstituteName`, the path the kernel resolves, prefixed `\??\`. A UNC
+  target becomes `\??\UNC\server\share`, with the leading two separators
+  replaced by that prefix.
+- `PrintName`, the path shown to the user, in ordinary Win32 form with no
+  prefix: `C:\target`, or `\\server\share`.
+
+Put the header's raw target in both and the link is created but resolves to
+nothing, in Explorer and everywhere else. Derive `PrintName` from
+`SubstituteName` by dropping a leading `\??\` and, if `UNC\` follows it,
+replacing that with a single leading separator.
+
+This is a Windows API requirement rather than an archive-format one, so it
+belongs after the security checks above, never in place of them: the target
+is still attacker-controlled text at this point.
+
 ## 6. Destination path handling
 
 The extractor builds `DestFileName = ExtrPath + "/" + SanitizedArchiveName`.
