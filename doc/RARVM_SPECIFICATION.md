@@ -324,6 +324,16 @@ limits:
 - Limit execution count. 7-Zip uses 25,000,000 instructions for the generic VM
   path; that is a reasonable compatibility ceiling.
 - Treat malformed operands or truncated bitstreams as unsupported filters.
+- Bound the standard filters' register-supplied parameters before running
+  them. These come from the archive:
+  - **Delta:** reject `channels == 0` or `channels > 1024`, and reject a data
+    size above half the VM memory. The channel count is `R[0]`, a full 32-bit
+    value, and the deinterleave loop runs once per channel, so an unbounded
+    count is a stall even when every pass is a no-op.
+  - **RGB:** reject `R[0] < 3` (the scanline stride is `R[0] - 3`) and
+    `R[1] > 2`.
+  - **Audio:** reject `channels == 0`, and apply the same data-size bound as
+    Delta.
 
 If generic VM execution is unavailable, a reader can still support ordinary
 archives by recognizing the six standard filter fingerprints and dispatching the
