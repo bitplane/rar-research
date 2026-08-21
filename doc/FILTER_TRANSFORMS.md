@@ -46,25 +46,28 @@ are behaviorally identical between the two; only the invocation framing differs
 ```
 def forward_e8(buf, file_offset, file_size = 1 << 24):
     pos = 0
-    end = len(buf) - 4
-    while pos < end:
+    while pos + 5 <= len(buf):
         if buf[pos] == 0xE8:
             disp   = read_u32_le(buf, pos + 1)
-            offset = (pos + file_offset) & 0xFFFFFFFF
-            # Inverse of the decoder rule:
-            # decoder writes Addr - Offset if Addr < file_size.
-            # We write disp + offset iff the round-trip holds.
-            new_addr = (disp + offset) & 0xFFFFFFFF
-            if new_addr < file_size:
-                # Normal case — decoder's "Addr < FileSize" branch.
-                write_u32_le(buf, pos + 1, new_addr)
-            elif disp >= 0xFFFFFFFF - offset + 1:
-                # Wrap case — decoder's "Addr<0, Addr+Offset>=0" branch.
-                # This triggers when disp is "negative" and the round-trip
-                # restores it via + file_size.
-                write_u32_le(buf, pos + 1, (new_addr - file_size) & 0xFFFFFFFF)
-            # else: leave disp unchanged — the decoder would not round-trip.
-            pos += 5
+            # The offset is taken at the address field, one past the opcode,
+            # and reduced modulo file_size. Both matter: an offset taken at
+            # the opcode is off by one everywhere, and an unreduced one
+            # diverges past 16 MB into the stream.
+            offset = (file_offset + pos + 1) % file_size
+            # Branch A, the decoder's "Addr < file_size" case.
+            a = (disp + offset) & 0xFFFFFFFF
+            if a < file_size:
+                write_u32_le(buf, pos + 1, a)
+            else:
+                # Branch B, the decoder's "Addr negative, Addr + Offset
+                # non-negative" case. Test the value being written, b, not
+                # disp: it is b that the decoder will read back.
+                b = (disp - file_size) & 0xFFFFFFFF
+                if b > 0xFFFFFFFF - offset:
+                    write_u32_le(buf, pos + 1, b)
+                # else: leave disp alone. Reachable only when the decoder
+                # would also leave it alone.
+            pos += 5          # never rescan a byte inside an address
         else:
             pos += 1
 ```
@@ -89,14 +92,30 @@ false-positives more random `0xE8` bytes in data sections. RAR's choice of
 16 MB has been stable since 2001; don't change it unless you're
 intentionally breaking wire format compatibility.
 
+### Trap: the decoder cannot tell a transformed address from a native one
+
+The reverse transform has no way to know whether a given `E8`'s four bytes
+were written by the encoder or were already in the binary. It applies its
+rule to both. So an untouched `E8 disp32` whose `disp` happens to be
+negative, with `disp + offset` non-negative, gets `file_size` added to it
+on extraction and comes out corrupted.
+
+That is why the encoder's third case exists, the one that writes nothing.
+Where the encoder leaves an address alone, the decoder must also leave it
+alone, and the two branch conditions above are exactly what makes that
+true. An encoder that transforms greedily, or that uses a different
+`offset` from the decoder's, breaks the pairing and the damage shows up as
+a handful of wrong call targets in an otherwise valid binary: the CRC
+catches it, but only after the whole member has been decoded.
+
 ### Encoder-side round-trip check
 
-Because the decoder rejects some transforms (the "else: leave unchanged"
-branch above), the encoder must test each candidate `E8` byte: run the
-forward transform, then mentally run the reverse transform, and only commit
-the transform if the reverse matches the
-original. A simpler equivalent: accept the transform iff
-`new_addr < file_size or disp > 0xFFFFFFFF - offset`.
+Because the decoder rejects some transforms, the encoder must test each
+candidate `E8` byte: run the forward transform, run the reverse transform
+on the result, and only commit if it reproduces the original. The branch
+structure above is that test, already simplified: `a < file_size` for the
+first case, `b > 0xFFFFFFFF - offset` for the second, where `b` is the
+value that would be written, and no write at all otherwise.
 
 ---
 
