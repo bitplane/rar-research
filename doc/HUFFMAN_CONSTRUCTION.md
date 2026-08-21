@@ -199,6 +199,24 @@ assert (next_code + lenCounters[maxLen] == 1 << maxLen)
 
 (After the loop, all leaves must exactly fill the level-`maxLen` code space.)
 
+### 4.1 Decode acceleration is an implementation choice
+
+Canonical codes can be decoded bit by bit against the per-length first-code
+and count arrays, with no lookup table at all, which is what `rars` does. They
+can equally be decoded by peeking a fixed number of bits into a direct-mapped
+table and falling back to the length walk for codes longer than that. Both
+produce identical symbols from identical bits.
+
+The peek width is a speed and memory trade, not a format property: a wider
+table resolves more codes in one step and costs `2^width` entries. Decoders
+that use one typically pick a wider table for the large main alphabets and a
+narrower one for the small distance, align, length and level tables, since a
+table for a 20-symbol alphabet has little to resolve.
+
+Nothing here reaches the wire. An encoder cannot observe which strategy a
+decoder uses, and a decoder cannot be wrong about it. Treat any specific width
+you see quoted as that implementation's tuning rather than a rule to match.
+
 ---
 
 ## 5. Packing `lens[]` into the wire format
