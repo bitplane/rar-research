@@ -683,6 +683,22 @@ inflate it with the codec selected by `UNP_VER` / `METHOD` and verify
 Although `HEAD_SIZE` includes the payload, `HEAD_CRC` is computed over
 only the 13-byte `COMM_HEAD` structure and excludes the comment payload.
 
+**Inflate the payload with a fixed 64 KB window**, whatever dictionary
+the archive's file entries use. `COMM_HEAD` has no dictionary field:
+there is nowhere in the 13 bytes above to put one, and the flags at +3
+are the common block flags rather than the file header's, so none of the
+dictionary bits apply.
+
+`UNP_SIZE` being a `uint16` settles the size. A comment cannot exceed
+65535 bytes unpacked, so no back-reference in a well-formed comment
+stream can ever reach further than 64 KB, and a larger window buys
+nothing. An encoder must never emit comment data referencing beyond it.
+
+The practical trap is a reader that sizes the comment window from the
+main header or from a file entry. That either over-allocates, in the
+harmless direction, or under-allocates against a file entry with a
+smaller dictionary, in which case a legal comment fails to inflate.
+
 Baseline RAR 1.5 writers may emit an archive comment by setting
 `MHD_COMMENT` on the main header and writing a standalone `COMM_HEAD`
 immediately after it. The simplest valid form stores the text directly:
