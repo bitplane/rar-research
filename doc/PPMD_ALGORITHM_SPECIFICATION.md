@@ -311,18 +311,25 @@ procedure GlueFreeBlocks():
     // Runs larger than 128 units are emitted as repeated 128-unit
     // blocks; the trailing residue is split into the largest fitting
     // bucket plus (optionally) a remainder.
+    // n is a byte address; nu, k and 128 are unit counts. Every step
+    // along n is therefore scaled by UNIT_SIZE.
     for n in head-list:
         nu = n.NU
         while nu > 128:
-            InsertNode(n, 37)           // bucket 37 = 128 units
-            n += 128; nu -= 128
+            InsertNode(n, 37)                     // bucket 37 = 128 units
+            n += 128 * UNIT_SIZE; nu -= 128
         i = units2indx[nu - 1]
         if indx2units[i] != nu:
             k = indx2units[i - 1]
-            InsertNode(n + k, nu - k - 1)  // residue into smaller bucket
-            i = i - 1                       // and the prefix into i-1
+            InsertNode(n + k * UNIT_SIZE, nu - k - 1)  // residue, smaller bucket
+            i = i - 1                                   // prefix into i-1
         InsertNode(n, i)
 ```
+
+The scaling is easy to lose because the C reference walks a typed pointer,
+where `n += 128` already means 128 units. In a flat byte array it does not,
+and the blocks this pass hands back to the free lists will overlap each other
+by eleven twelfths of their length.
 
 If `AllocUnitsRare` runs `GlueFreeBlocks` and still cannot satisfy the
 allocation, the eventual NULL return propagates up to `UpdateModel` or
