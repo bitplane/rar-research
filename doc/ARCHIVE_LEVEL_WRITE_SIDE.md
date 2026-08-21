@@ -168,12 +168,41 @@ this table:
 | Bit input state | ✓ | ✓ (new stream, but fresh bit buffer) | |
 | `FirstWinDone` | ✓ | ✓ carries | Unpack50/70 only. |
 | `WriteBorder` | ✓ | ✓ carries | Unpack50/70 only. |
-| **Filters** | ✓ | **✓ reset always** | All codec generations. |
+| **Filters** | ✓ | **✓ reset always** | Unpack50/70. Unpack29 is different: see below. |
 | `BlockHeader` | ✓ | ✓ reset always | |
 
 **The one surprise:** filters reset at every file boundary, even in solid
 mode. Filters never span solid files, so a decoder re-initialises them
 per file rather than carrying them over with the rest of the state.
+
+**Unpack29 keeps its stored RARVM programs, though.** RAR 3.x filters
+are transmitted as bytecode and assigned an index, and that table of
+declared programs survives a solid file boundary along with the
+"which program was used last" selector. A later member can then invoke a
+filter declared by an earlier one without re-sending a byte of it.
+
+Measured on a two-member solid archive from RAR 3.93, both members
+E8-heavy so both use the filter, by counting program declarations while
+decoding:
+
+| Archive | Declarations | Invocations |
+|---|---|---|
+| First member alone | 1 | 1 |
+| Both members, solid | 1 | 3 |
+
+One declaration covers both members. The extra invocations in member two
+carry no program index at all, falling back to the retained selector, so
+a decoder that clears either the table or the selector at the boundary
+decodes member two with no filter or the wrong one.
+
+The bytecode is cleared only when the stream asks, by sending an explicit
+program index of zero. That is a stream-level instruction, not a
+file-boundary event.
+
+What does not carry is the queue of filter *invocations* pending
+application against the output window. Those are consumed as the window
+is written out, so the queue is empty at a member boundary in the normal
+case; treat it as per-file and the stored bytecode as per-solid-chain.
 
 This means that if the encoder emits a filter at the end of file N, the
 decoder discards it before starting file N+1. The encoder should
