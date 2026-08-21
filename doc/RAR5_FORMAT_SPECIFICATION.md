@@ -962,10 +962,12 @@ Four repeat distances are maintained (`OldDist[0..3]`), initially set to the
 all-ones sentinel `(size_t)-1` (`0xFFFFFFFF` on 32-bit, `0xFFFFFFFFFFFFFFFF`
 on 64-bit). This is larger than any valid distance for any supported
 dictionary size, so referencing an uninitialized slot via symbols 258-261
-before a real match has been recorded yields an out-of-window read that the
-decoder must reject. `LastLength` (used by symbol 257) is initially `0`, which
-causes symbol 257 to be ignored until a match has been emitted. Verified
-against `_refs/unrar/unpack.cpp` (`UnpInitData`).
+before a real match has been recorded reaches past the start of the window.
+That is not an error: the decoder writes `length` zero bytes and copies
+nothing, the same as for any other out-of-window distance (see
+`ARCHIVE_LEVEL_WRITE_SIDE.md` §1.6). `LastLength` (used by symbol 257) is
+initially `0`, which causes symbol 257 to be ignored until a match has been
+emitted.
 
 When a new match is used (sym >= 262), the distances shift right and the new distance
 enters at position 0.

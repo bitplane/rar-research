@@ -326,6 +326,25 @@ conforming reader extracting file N from a solid group must:
    for `rar l` and metadata queries. Any extraction path must still
    decompress linearly from the start of the solid group.
 
+6. **Zero-fill a match that reaches past the start of the window.** The
+   window is never cleared, so a back-reference to a byte that was never
+   written would read whatever the buffer held. Readers guard the copy
+   with a first-wrap flag instead of clearing: while the write cursor has
+   not yet wrapped the window once, a distance greater than the number of
+   bytes written emits that many zero bytes and copies nothing. A distance
+   larger than the window is treated the same way at any time.
+
+   This is not error handling, it is the format. An encoder may treat
+   everything before the stream's first byte as zeroes, so an archive can
+   legitimately use one of these matches to write a run of zeroes cheaply,
+   and rejecting it makes files unreadable that every RAR tool extracts.
+   Checked against UnRAR 7.20 and RAR 7.12 with crafted RAR 2.0, RAR 2.9
+   and RAR 5.0 archives: all three zero-fill and report no error.
+
+   The guard belongs in every LZ codec from Unpack15 through Unpack70,
+   and it costs nothing in corruption detection, because a stream that is
+   damaged rather than deliberately odd still fails its file hash.
+
 **Partial extraction cost.** To extract only file N from a K-file solid
 group, a reader must decompress files 0..N — discarding the output of
 0..N-1. In practice, the UI should warn when a user requests a single

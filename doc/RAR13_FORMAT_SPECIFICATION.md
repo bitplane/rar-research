@@ -476,7 +476,7 @@ state thread-friendly and matches the upstream macro form.
 | LCount   | 0            | Last-match repeat counter. |
 | FlagBuf  | 0            | Current flag byte (shifted left as consumed). |
 | FlagsCnt | 0            | Remaining flag bits. |
-| OldDist[4] | all 1-bits (`(size_t)-1`) on non-solid; carries on solid | Repeat distance buffer (4 entries). The all-ones sentinel exceeds any valid 64-KiB-window distance, so a rep-match against an unwritten slot dereferences out-of-window memory and must be rejected. |
+| OldDist[4] | all 1-bits (`(size_t)-1`) on non-solid; carries on solid | Repeat distance buffer (4 entries). The all-ones sentinel exceeds any valid 64-KiB-window distance, so a rep-match against an unwritten slot reaches past the window and zero-fills, as `CopyString15` does for any such distance (see "Window contents on non-solid" below). |
 | OldDistPtr | 0            | Write cursor into `OldDist[]`, always masked `& 3`. New matches go to `OldDist[OldDistPtr]` then `OldDistPtr = (OldDistPtr+1) & 3`; ShortLZ rep-matches with decoded length `9..12` read from `OldDist[(OldDistPtr - (Length-9)) & 3]` (0 = most recent, 3 = oldest). |
 | LastDist | `(uint)-1`     | Most recent match distance (used by `LCount==2` immediate-repeat path in ShortLZ). |
 | LastLength | 0            | Most recent match length (used by the same immediate-repeat path; 0 means "no prior match" so the path is effectively disabled until the first real match). |
