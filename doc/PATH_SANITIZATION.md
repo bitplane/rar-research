@@ -55,11 +55,21 @@ algorithm:
 ### 3.1 Step 1 — strip everything up to the last `/../`
 
 ```
-for I in 0 .. len(S)-1:
-    if IsPathDiv(S[I]) and S[I+1..I+3] == ".." and
-       (IsPathDiv(S[I+3]) or S[I+3] == NUL):
-        DestPos = I+4  (or I+3 if at end)
+# S is a byte string with no terminator. Every index below is inside it.
+DestPos = 0
+for I in range(len(S) - 2):                  # I, I+1 and I+2 are always valid
+    if IsPathDiv(S[I]) and S[I+1] == '.' and S[I+2] == '.' and \
+       (I + 3 == len(S) or IsPathDiv(S[I+3])):
+        DestPos = min(I + 4, len(S))
 ```
+
+The bound is on the loop, not on the reads. The C original walks to the end of
+the string and leans on two things to stay in bounds: a NUL terminator, so
+`S[I+1]` is always readable, and short-circuit `&&`, so `S[I+2]` and `S[I+3]`
+are never reached once an earlier test fails. Translate it literally into a
+language with eager slicing (`S[I+1..I+3]`) or without short-circuiting and
+`"a/"` reads two bytes past the end. Stopping the loop at `len(S) - 3` removes
+the dependency instead of documenting it.
 
 After this, `S[DestPos..]` is the substring starting after the last
 `..` component. A name like `good/../../bad/evil.txt` becomes
