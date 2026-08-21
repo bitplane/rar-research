@@ -469,8 +469,27 @@ RAR 3.0+ adds `MHD_FIRSTVOLUME` (`0x0100` in 2.x/3.x main header flags,
 or a dedicated bit in RAR 5.0 main header) to identify volume 1
 unambiguously. This lets decoders auto-detect volume 1 when given any
 volume. An encoder should always set it on volume 1 and never on other
-volumes. Legacy RAR 2.x archives lack this flag and use filename
-convention (`.rar` = first, `.rNN` = subsequent) instead.
+volumes. Legacy RAR 2.x archives lack this flag.
+
+**Without the flag, readers probe the content rather than trust the
+name.** Scan past the main header to the first file or service header
+and read its split-before flag: clear means this volume holds the start
+of a stream and is volume 1, set means it is a continuation. Then seek
+back and carry on normally.
+
+The filename convention is a naming rule, not evidence. Measured by
+crossing the two signals on a RAR 3.93 old-style set:
+
+| File | Name says | Content says | Reader reports |
+|---|---|---|---|
+| `z.rar` | volume 1 | continuation | **volume 2** |
+| `y.r05` | continuation | volume 1 | **volume 1** |
+
+Content wins in both directions, so an encoder cannot get away with
+naming a volume `.rar` and expecting readers to treat it as the start,
+and a reader cannot get away with parsing the extension. Handed a
+continuation, a reference reader walks back to find the real first
+volume before extracting.
 
 ### 2.4 Volume naming conventions
 
