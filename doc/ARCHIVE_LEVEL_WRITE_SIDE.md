@@ -15,9 +15,9 @@ handle beyond the LZ/Huffman/filter/encryption/integrity primitives:
 References:
 - a public RAR reader — `UnpInitData` reset rules (lines 206–240)
 - a public RAR reader — `NextVolumeName` naming conventions
-- a public RAR reader / `arcread.cpp` — header framing
+- a public RAR reader — header framing
 - a public RAR reader — Quick Open cache structure
-- a public RAR reader / `filcreat.cpp` — file creation and link
+- a public RAR reader — file creation and link
   resolution
 
 ---
@@ -102,7 +102,7 @@ beginning. Three workable strategies:
 3. **Skip QO/RR.** Locator is optional. If the encoder does not emit
    Quick Open or a recovery record, `MHEXTRA_LOCATOR` can be absent or
    have both offset fields set to zero (which compatible RAR reader interprets as
-   "reserved space was not enough"; `arcread.cpp:1014, 1020`).
+   "reserved space was not enough").
 
 ### 0.3 Ordering rules (must-before / must-after)
 
@@ -172,12 +172,8 @@ this table:
 | `BlockHeader` | ✓ | ✓ reset always | |
 
 **The one surprise:** filters reset at every file boundary, even in solid
-mode. From `unpack.cpp:224`:
-```
-// Filters never share several solid files, so we can safely reset them
-// even in solid archive.
-InitFilters();
-```
+mode. Filters never span solid files, so a decoder re-initialises them
+per file rather than carrying them over with the rest of the state.
 
 This means that if the encoder emits a filter at the end of file N, the
 decoder discards it before starting file N+1. The encoder should
@@ -272,13 +268,9 @@ overhead, so an encoder can ship without any of this and add it later.
 
 ### 1.4 The "first file without solid flag" wedge
 
-`unpack.cpp:38-40` has a defensive comment about the first unpacked file
-being flagged solid-true by mistake:
-
-```
-// It prevents crash if first unpacked file has the wrong "true" Solid flag,
-// so first DoUnpack call is made with the wrong "true" Solid value later.
-```
+A decoder has to survive a first file that is wrongly flagged solid,
+because there is no previous file for it to be solid against. Readers
+guard the case rather than trusting the flag.
 
 The encoder must ensure the first file in the solid group is `solid =
 false` — corrupting this invariant produces an archive that compatible RAR reader
@@ -307,18 +299,17 @@ conforming reader extracting file N from a solid group must:
 
 2. **Not reset LZ state between solid files.** Mirror the write-side
    table in §1.1: keep window, reps, `LastDist`/`LastLength`, Huffman
-   tables, `FirstWinDone`, `WriteBorder`. Only reset filters
-   (`unpack.cpp:224` — `InitFilters()` runs per file).
+   tables, `FirstWinDone`, `WriteBorder`. Only reset filters, which are
+   re-initialised once per file.
 
 3. **Honour `solid_flag` on file entry, not on block entry.** The flag
    lives in the file header's compression-info field. Blocks within a
    solid continuation file may freely re-emit Huffman tables
    (§1.3) — that's a block-level decision, not a state reset.
 
-4. **Reject the first-file-solid-true wedge.** The defensive code at
-   `unpack.cpp:38-40` tolerates a malformed first file marked
-   `solid = true`, but a fresh implementation should either treat the
-   first file's solid flag as false regardless or reject the archive.
+4. **Reject a first file marked solid.** Readers tolerate it, but a
+   fresh implementation should either treat the first file's solid flag
+   as false regardless or reject the archive.
    Silently accepting it masks encoder bugs.
 
 5. **Seek via Quick Open only for listing.** The QO cache (§4) carries
@@ -419,7 +410,7 @@ Key observations:
   This applies uniformly across codecs:
 
   - **LZ-mode (Unpack15/20/29/50/70):** the bit-stream cursor (`InAddr`
-    + `InBit` in `_refs/unrar/getbits.cpp`) carries across; the next
+    + `InBit`) carries across; the next
     bit is read from the next volume's first compressed byte at the
     appropriate bit offset.
   - **PPMd-mode (Unpack29):** the range coder state (`Low`, `Range`,
@@ -576,7 +567,7 @@ Service headers are structurally identical to file headers — they even
 carry compression info, file hash, and encryption records. Only the
 header type and the "name" convention differ: a file header's name is a
 user-visible path; a service header's name is a well-known token from
-the `SUBHEAD_TYPE_*` set in `headers5.hpp`.
+the `SUBHEAD_TYPE_*` set.
 
 ### 3.2 Placement rules
 
@@ -605,7 +596,9 @@ any ordering).
   present) gives the explicit position; otherwise the reader scans for block
   type `0x76`.
 
-Verified against `_refs/unrar/arcread.cpp` block-walk invariants. The only
+Oracle: every RAR 5.0 archive under `crates/rars/tests/fixtures/rar50/`
+in the rars tree parses under these rules, including the WinRAR 7.21
+header-encrypted Quick Open archive. The only
 strict ordering rules are (a) ACL/STM-attaches-to-preceding-file-header and
 (b) QO-must-be-near-end-for-fast-listing.
 
@@ -617,6 +610,15 @@ conversion (`ENCRYPTION_WRITE_SIDE.md` §5.3) for encrypted service
 payloads with hashes.
 
 ### 3.4 Archive comment write path
+
+**Oracles for §3.4 and §3.5.** Five comment archives covering every
+wire form sit in the rars fixture tree: `rar13/COMMENT.RAR`,
+`rar15_40/rar202/comment_nopsw.rar` (WinRAR 2.02, comment inside the
+main header), `rar15_40/rar300/with_comment_rar300.rar` (RAR 3.00
+subblock), `rar50/with_comment.rar` (5.0 CMT service), plus
+`rar15_40/node_unrar_js/with_comment.rar` for the UTF-16 variant. rars
+reads all of them and writes each form back, so both directions of every
+row in the encoding table below have a test behind them.
 
 The archive comment is a free-form text blob associated with the
 archive as a whole (not with any individual file). Three wire
@@ -634,8 +636,8 @@ Modern encoders should emit the RAR 5.0 form for `RARFMT50` archives
 and the RAR 3.0 form for `RARFMT15`. The RAR 1.4 and RAR 2.9 forms
 are legacy and should not be produced by a new encoder.
 
-**Size limit.** compatible RAR reader defines `MAXCMTSIZE = 0x40000` (256 KB;
-`rardefs.hpp:26`). This is the unpacked size bound — compressed size
+**Size limit.** The comment size ceiling is `0x40000`, 256 KB. This is
+the unpacked size bound — compressed size
 is whatever the chosen compression method produces. An encoder that
 exceeds 256 KB may still produce a readable archive in compatible RAR reader (the
 limit is enforced at creation/display time in WinRAR, not at read
@@ -644,12 +646,12 @@ respect the limit. Keep comments below 256 KB.
 
 **Text encoding.**
 
-- **RAR 5.0:** UTF-8, no trailing zero (`arccmt.cpp:154-155`, reader
-  uses `UtfToWide`). An encoder converts native wide strings to UTF-8
+- **RAR 5.0:** UTF-8, no trailing zero, decoded with the reader's
+  UTF-8-to-wide conversion. An encoder converts native wide strings to UTF-8
   and writes the raw byte sequence.
 - **RAR 3.0+ (RARFMT15) service header:** two variants, selected by
   the `SUBHEAD_FLAGS_CMT_UNICODE` bit (`0x0001`) in the service
-  header's `SubFlags` field (`arccmt.cpp:157`):
+  header's `SubFlags` field:
   - Flag clear: OEM codepage bytes (typically CP437 or the host
     default). On read, compatible RAR reader converts OEM → UTF-16 via
     `CharToWide`.
@@ -662,8 +664,7 @@ respect the limit. Keep comments below 256 KB.
 
 **Compression method.** The CMT subblock / service header's compressed
 data area can be stored (`0x30`) or any LZ/PPMd method (`0x31..0x35`).
-Decoder uses a fixed **64 KB window** (`CmtUnpack.Init(0x10000, false)`
-at `arccmt.cpp:88`) regardless of what the archive's main files use —
+Decoder uses a fixed **64 KB window** regardless of what the archive's main files use —
 an encoder must not emit a comment compressed with a larger
 dictionary. Practical rule:
 
@@ -673,7 +674,7 @@ dictionary. Practical rule:
   conventional choice.
 
 **Per-version header field layout — RAR 2.9 / 3.x `HEAD3_CMT`**
-(`CommentHeader`, `headers.hpp:319-325`, 13-byte header + data):
+(`CommentHeader`, 13-byte header + data):
 
 | Offset | Field     | Type   | Description |
 |--------|-----------|--------|-------------|
@@ -684,7 +685,7 @@ dictionary. Practical rule:
 | +7     | UnpSize   | uint16 | Uncompressed comment length. Max 0xFFFF (64 KB inline); archives > 64 KB use the service-header form. |
 | +9     | UnpVer    | uint8  | Minimum decoder version (15–current). |
 | +10    | Method    | uint8  | Compression method `0x30..0x35`. |
-| +11    | CommCRC   | uint16 | Low 16 bits of `~CRC32(0xFFFFFFFF, comment_bytes) & 0xFFFF` (`arccmt.cpp:126, 92`). Computed over the uncompressed comment for stored, or unpacked bytes for compressed. |
+| +11    | CommCRC   | uint16 | Low 16 bits of `~CRC32(0xFFFFFFFF, comment_bytes) & 0xFFFF`. Computed over the uncompressed comment for stored, or unpacked bytes for compressed. |
 
 The `UnpSize` field is a `uint16`, capping the RAR 2.9-style inline
 comment at 64 KB. Archives needing a larger comment must use the
@@ -693,7 +694,7 @@ service-header form (RAR 3.0+), where `UnpSize` is a vint and the
 
 **Placement.** Conventionally emitted before any file headers, right
 after the main archive header. compatible RAR reader's `SearchSubBlock` scans from
-the archive start (`arccmt.cpp:38-39`) so placement is not strictly
+the archive start, so placement is not strictly
 required to be first, but readers often short-circuit after the main
 header.
 
@@ -738,7 +739,7 @@ Mirror of §3.4 from the reader's perspective.
 
 - **RAR 5.0 (RARFMT50):** walk header blocks from the start of the
   archive; stop at the first `HEAD_SERVICE` block whose `Name` field is
-  the 3-byte ASCII string `"CMT"` (`arccmt.cpp:142-158`). Readers that
+  the 3-byte ASCII string `"CMT"`. Readers that
   only need the comment can stop walking after one CMT is found; a
   conforming reader ignores subsequent CMT records.
 - **RAR 3.0+ (RARFMT15) service header form:** same as RAR 5.0 but the
@@ -757,8 +758,8 @@ A conforming reader tries the forms in priority order for the detected
 format version and uses the first match. Only one archive comment is
 user-visible even if multiple CMT records exist.
 
-**Decompression.** Regardless of version, compatible RAR reader uses a fixed 64 KB
-decoder window (`CmtUnpack.Init(0x10000, false)` at `arccmt.cpp:88`).
+**Decompression.** Regardless of version, readers use a fixed 64 KB
+decoder window.
 If the comment's `UnpVer` indicates a dictionary size larger than 64 KB
 the reader must reject the comment (or treat as corrupt) — it cannot
 fall back to a larger window without risking out-of-window references.
@@ -783,7 +784,7 @@ A stored comment (`method == 0x30`) bypasses decompression entirely.
 
 | Form | Bytes → text |
 |------|--------------|
-| RAR 5.0 service | UTF-8 → wide via `UtfToWide` (`arccmt.cpp:154`). Malformed UTF-8 falls back to OEM. |
+| RAR 5.0 service | UTF-8 → wide. Malformed UTF-8 falls back to OEM. |
 | RAR 3.0+ service, `SUBHEAD_FLAGS_CMT_UNICODE` clear | OEM → wide via `CharToWide`. |
 | RAR 3.0+ service, `SUBHEAD_FLAGS_CMT_UNICODE` set | `RawToWide` — treat bytes as UTF-16LE of the declared length. |
 | RAR 2.9 `HEAD3_CMT` | OEM → wide. No Unicode option. |
@@ -850,8 +851,8 @@ HeaderData) — it does not include the CRC32 field or the BlockSize vint
 itself.
 
 The payload (concatenation of all wrappers) is the `UnpSize` of the QO
-service header. The decoder streams it 64 KB at a time
-(`MaxBufSize = 0x10000` in `qopen.hpp:33`), so a single wrapper larger
+service header. The decoder streams it 64 KB at a time,
+so a single wrapper larger
 than ~64 KB − 256 bytes forces a reshuffle but is otherwise legal; the
 real ceiling is the `MAX_HEADER_SIZE_RAR5` check on `HeaderSize`.
 
@@ -1188,7 +1189,7 @@ def validate_sfx_stub(stub_bytes: bytes, rar_format: str) -> None:
 
 ### 5.6.4 RAR 1.4 special case
 
-`archive.cpp:161-166` contains a carve-out for the RAR 1.4 signature
+Readers carve out a special case for the RAR 1.4 signature
 (`52 45 7E 5E`, "RE~^", only 4 bytes — short enough to collide with
 random data). The decoder requires that the 4-byte RAR 1.4 signature
 be preceded by the literal ASCII bytes `RSFX` at **file offset 28**.
