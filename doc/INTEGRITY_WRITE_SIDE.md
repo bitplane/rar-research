@@ -477,8 +477,9 @@ into chunks and runs the RS encode per chunk.
 
 ### 3.5 RAR 3.x `.rev` files (separate recovery volumes)
 
-`recvol3.cpp` uses the same `RSCoder` to produce standalone recovery
-volumes. The model: N data volume files + P `.rev` parity files. The RS
+Separate recovery volumes use the same GF(256) Reed-Solomon coder as the
+inline recovery record above. The model: N data volume files + P `.rev`
+parity files. The RS
 encode operates byte-by-byte across all `N + P` volumes, treating the
 same byte offset in each file as one RS symbol.
 
@@ -500,8 +501,7 @@ def make_rev_files(volume_files, num_rev):
 ```
 
 (The real implementation buffers 64 MB across all files for throughput;
-`TotalBufferSize = 0x4000000` at `recvol3.cpp:2`, divided by total file
-count.)
+64 MB divided by the total file count.)
 
 **File naming.** Two conventions coexist:
 
@@ -509,37 +509,52 @@ count.)
   volume count, `R` = recovery volume count, `F` = file index (1-based
   within the recovery set). Example: `arc_5_3_1.rev` is the first of
   three recovery files protecting a 5-volume archive.
-- **New-style (RAR 3.10+):** `basename.partNN.revMM` (or similar,
-  `recvol3.cpp:65-78` autodetects). The index fields are stored in a
-  trailer instead of the name.
+- **New-style (RAR 3.10+):** `basename.partNN.revMM` (or similar). The
+  index fields are stored in a trailer instead of the name, and a reader
+  autodetects which convention it is looking at.
 
 New archives should use new-style names. compatible RAR reader verifies old-style
 names by parsing digit groups out of the filename; new-style names are
 verified by the trailer CRC.
 
 **Per-.rev file trailer (new-style only).** The last 7 bytes of each
-new-style recovery volume carry index metadata plus a CRC32 checksum
-(`recvol3.cpp:173-186`):
+new-style recovery volume carry index metadata plus a CRC32 checksum:
 
 ```
 offset  size  content
--7      1     P[2] - 1    # F (file index within the set, 1..255)
--6      1     P[1] - 1    # R (RecVolNumber, count of recovery volumes)
--5      1     P[0] - 1    # V (FileNumber, count of data volumes)
+-7      1     V - 1       # count of data volumes in the set
+-6      1     R - 1       # count of recovery volumes in the set
+-5      1     F - 1       # index of this recovery file, 1..R
 -4      4     CRC32 over bytes [0 .. length-4) of the .rev file
 ```
 
-Each index field is stored as `value - 1` so that the maximum 255 fits
-in a single byte. The reader loads `P[2-i] = byte + 1` (loop variable
-`i = 0..2` at `recvol3.cpp:175-176`), then validates
-`P[1] + P[2] ≤ 255` and `P[0] + P[2] − 1 ≤ 255` to confirm the RS
-codeword length stays within the 8-bit field.
+Note the order: the two set-wide counts come first and the per-file
+index comes last. The CRC will not catch a reader that swaps `V` and
+`F`, because it covers the bytes and not their meaning. Nothing else
+will either, until the parity rows land in the wrong place and
+reconstruction returns plausible-looking garbage.
+
+Each field is stored as `value - 1` so that a count of 256 fits in a
+byte. Two bounds follow from the code being RS over GF(256): `V + R` may
+not exceed 255, because that is the codeword length, and `F + V - 1` may
+not exceed 255, because that is this file's row index within the
+codeword.
+
+**Oracle.** `rar393 -v100k -rv2` over a 300 KB payload gives three data
+volumes and two recovery volumes. Read the trailers: byte -7 is `2` in
+both `.rev` files while byte -5 is `0` then `1`. The constant byte is
+the set-wide data-volume count, the varying one is the per-file index.
+Delete a data volume and rars rebuilds it byte-identically from the
+pair, which it can only do with the rows placed correctly.
+
+Worth knowing when building test sets: this encoder caps `R` at `V - 1`,
+so asking for more recovery volumes than that silently gives fewer.
+`-rv3` and `-rv4` over a 3-volume archive both produce 2.
 
 These 7 bytes are the same 7 bytes that the end-of-archive header
 `EARC_REVSPACE` flag (`0x0004`) reserves inside the last data volume's
-`.rar`. When compatible RAR reader reconstructs a lost data volume, it zero-fills that
-trailer region (`recvol3.cpp:428-432`) because the parity data does
-not cover it.
+`.rar`. A reader reconstructing a lost data volume zero-fills that
+trailer region, because the parity does not cover it.
 
 Old-style `.rev` files have no trailer and no CRC32 — compatible RAR reader still
 accepts them but cannot detect corruption in the recovery data itself.
