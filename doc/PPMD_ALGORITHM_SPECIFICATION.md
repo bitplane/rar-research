@@ -453,15 +453,19 @@ function DecodeSymbol(rc: RangeDecoder) -> int:
         for each state in min_context:
             char_mask[state.symbol] = 0
     else:
-        // Binary (single-symbol) context
+        // Binary (single-symbol) context. The coder has no DecodeBit: this
+        // is GetThreshold(PPMD_BIN_SCALE) against *prob, then Decode(0, *prob)
+        // or Decode(*prob, PPMD_BIN_SCALE - *prob). See §12.2.
         prob = GetBinSumm()
-        if rc.DecodeBit(*prob) == 0:
+        if rc.GetThreshold(PPMD_BIN_SCALE) < *prob:
+            rc.Decode(0, *prob)
             *prob = UPDATE_PROB_0(*prob)
             found_state = one_state(min_context)
             symbol = found_state.symbol
             UpdateBin()
             return symbol
 
+        rc.Decode(*prob, PPMD_BIN_SCALE - *prob)
         *prob = UPDATE_PROB_1(*prob)
         init_esc = kExpEscape[*prob >> 10]
         char_mask[one_state(min_context).symbol] = 0
@@ -1045,10 +1049,13 @@ inline (`OneState`) rather than allocating a stats array. Transitions:
 
 ## 12. Range Coder
 
-PPMd uses an abstract range coder interface with three operations:
+PPMd drives the coder through two operations:
 - `GetThreshold(total)` → scaled count for symbol identification
-- `Decode(start, size)` → narrow range after identifying symbol
-- `DecodeBit(size0)` → binary decision with probability `size0 / BIN_SCALE`
+- `Decode(start, size)` → narrow the range once the symbol is known
+
+A binary context uses those same two with `total = PPMD_BIN_SCALE`. The 7z
+coder in §12.1 also carries a `DecodeBit` shortcut; the RAR coder in §12.2 has
+no such routine, and §12.2 shows the two calls a binary decision reduces to.
 
 ### 12.1 7-Zip Range Coder
 
@@ -1125,19 +1132,34 @@ Range *= size
 Normalize()
 ```
 
-**DecodeBit(size0):**
+**Binary decisions.** There is no `DecodeBit` in this coder. A binary context
+calls the same two operations with `total = PPMD_BIN_SCALE` (`1 << 14`) and a
+split point `bs`:
+
 ```
-bound = (Range >> 14) * size0
-if (Code - Low) < bound:
-    Range = bound
-    Normalize()
-    return 0
+threshold = GetThreshold(PPMD_BIN_SCALE)
+if threshold < bs:
+    Decode(0, bs)                        # bit 0
 else:
-    Low += bound
-    Range -= bound
-    Normalize()
-    return 1
+    Decode(bs, PPMD_BIN_SCALE - bs)      # bit 1
 ```
+
+Implementations usually inline that. Writing `size0` for `(Range >> 14) * bs`,
+with `Range` still holding its pre-shift value:
+
+```
+if (Code - Low) < size0:
+    Range = size0                                     # bit 0
+else:
+    Low  += size0
+    Range = (Range & ~(PPMD_BIN_SCALE - 1)) - size0    # bit 1
+Normalize()
+```
+
+The mask on the "1" branch is what `Range * (PPMD_BIN_SCALE - bs)` leaves after
+the shift, since `(Range >> 14) << 14` is `Range & ~(PPMD_BIN_SCALE - 1)`. Write
+`Range -= size0` instead and the low 14 bits of `Range` survive, which puts the
+decoder on a different interval from the encoder that did the multiply.
 
 **Normalize (carry-less variant):**
 ```
@@ -1196,12 +1218,12 @@ Normalize()
 ```
 bound = (Range >> 14) * size0
 Low  += bound
-Range = (Range & ~(kBottom - 1)) - bound
+Range = (Range & ~(PPMD_BIN_SCALE - 1)) - bound
 Normalize()
 ```
-The `Range & ~(kBottom - 1)` mask aligns the remaining range to a `kBottom`
-boundary — mirroring the decoder's read side, which always consumes the same
-aligned quantity for the "1" branch of a binary decision.
+The mask is `PPMD_BIN_SCALE - 1`, clearing 14 bits, not `kBottom - 1`, which
+would clear 15. Both this and the decoder's "1" branch (§12.2) are the same
+`Range * (PPMD_BIN_SCALE - bs)` written without the multiply.
 
 **Normalize (carry-less):**
 ```
