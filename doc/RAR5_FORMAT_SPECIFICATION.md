@@ -637,19 +637,31 @@ For non-split files and last parts: hash of unpacked data.
 | `0x0008` | Last access time present. |
 | `0x0010` | Nanosecond precision (Unix time only — flag `0x0001` must also be set). |
 
-**Width per timestamp** (verified against `_refs/unrar/arcread.cpp:1128-1158`):
+**Width per timestamp.** Nanosecond precision does not widen the timestamp to a
+64-bit nanosecond count. The seconds stay a `uint32` and a second `uint32`
+carries the remainder:
 
 | `0x0001` (Unix) | `0x0010` (Nanos) | Per-timestamp encoding |
 |:---:|:---:|:---|
 | 0 | 0 | uint64 (Windows FILETIME, 100-ns ticks since 1601-01-01 UTC) |
 | 0 | 1 | uint64 (Windows FILETIME — nanosecond flag without Unix flag is **ignored**) |
 | 1 | 0 | uint32 (Unix `time_t` seconds since 1970-01-01 UTC) |
-| 1 | 1 | uint32 seconds **followed by** uint32 nanoseconds (low 30 bits used; values ≥ 1,000,000,000 are clamped/rejected) |
+| 1 | 1 | uint32 seconds **followed by** uint32 nanoseconds (see below) |
 
 Nanosecond fields appear in the same per-time order (mtime, ctime, atime) and
 **only after** all the seconds fields, not interleaved. So the on-disk layout
 when all three times + nanoseconds are present is: `mtime_sec ctime_sec
 atime_sec mtime_ns ctime_ns atime_ns`.
+
+Read each nanosecond field as `value & 0x3FFFFFFF`, then check it:
+
+- **Below 1,000,000,000:** add it to that timestamp's seconds.
+- **1,000,000,000 or above:** ignore the field entirely and keep the
+  one-second resolution time. Do not clamp it, and do not carry the excess
+  into the seconds. A whole second belongs in the seconds field, so a
+  remainder that large means the record is malformed.
+
+An encoder must never emit one: carry into the seconds field instead.
 
 #### File Version Record (type 0x04)
 
