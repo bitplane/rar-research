@@ -273,10 +273,23 @@ The match finder's `cyclicBufferSize` must equal `dict_size + 1`.
 |---|---|---|
 | RAR 2.0 (Unpack20) | 2 | 255 + offset from length table |
 | RAR 2.9+ (Unpack29) | 2 | 257 + extra bits (up to ~258 typical) |
-| RAR 5.0 (Unpack50/70) | 2 | symbol 262+ slot encodes up to `0x1001FF` ≈ 1 MB |
+| RAR 5.0 (Unpack50/70) | 2 | 4097 (`0x1001`), or 4100 (`0x1004`) with the distance bonus |
 
 `lenLimit` passed to `GetMatchesSpec1` / `Hc_GetMatchesSpec` must be clamped
 to the per-version maximum.
+
+**The RAR 5.0 ceiling is about 4 KB, not 1 MB.** Work it out from the
+slot formula in `RAR5_FORMAT_SPECIFICATION.md` §11.5: the last of the 44
+new-match slots is 43, giving `numBits = (43 >> 2) - 1 = 9`, so
+
+```
+2 + ((4 | (43 & 3)) << 9) + ((1 << 9) - 1) = 2 + 3584 + 511 = 4097
+```
+
+and the distance bonus of §11.7 can add at most 3 on top, for 4100. A
+match finder handed a `lenLimit` of a megabyte will find matches it
+cannot encode. rars caps its encoder at 4096, one below the format
+ceiling.
 
 ### 6.3 Distance constraints
 
