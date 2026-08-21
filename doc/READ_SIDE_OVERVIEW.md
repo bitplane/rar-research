@@ -328,7 +328,7 @@ compression-info) selects the decompressor:
 
 | UnpVer | Decoder | Notes |
 |--------|---------|-------|
-| 13 | Unpack13 | RAR 1.3/1.4. Adaptive Huffman. (Wire byte = `2`; see `RAR13_FORMAT_SPECIFICATION.md` §5.) |
+| 13 | Unpack15 | RAR 1.3/1.4. Same adaptive-Huffman codec as RAR 1.5, with the window fixed at 64 KB. 13 tags the container era, not a separate algorithm. (Wire byte = `2`; see `RAR13_FORMAT_SPECIFICATION.md` §5.) |
 | 15 | Unpack15 | RAR 1.5. Short-distance LZ with Huffman. |
 | 20 | Unpack20 | RAR 2.0. Block-structured LZ plus per-block audio mode. |
 | 26 | Unpack20 | RAR 2.x compression for files larger than 2 GB. Same codec as `UnpVer = 20`; the higher version number lets older readers reject what they can't size. (Audio mode is per-block via bit 15 of the block header — not UnpVer-gated.) |
@@ -589,8 +589,9 @@ significant archive:
 - [ ] `HEAD_MAIN` / `HEAD_FILE` / `HEAD_ENDARC` handling for each
       format version.
 - [ ] Unknown block skipping via HeadSize.
-- [ ] Unpack15/20/29/50 decompressors — skip Unpack13 if RAR 1.3
-      archives aren't in scope. Current `rars` status: Unpack50 covers
+- [ ] Unpack15/20/29/50 decompressors. RAR 1.3/1.4 needs no extra
+      decompressor: it shares Unpack15, so supporting it is container
+      work, not codec work. Current `rars` status: Unpack50 covers
       non-filtered RAR5 LZ fixtures, all four RAR5 fixed filters, and
       single-archive RAR5 solid state, plus the promoted compressed RAR5
       multivolume fixture; RAR5 solid-across-volume coverage and RAR7
