@@ -1395,13 +1395,24 @@ indicates the action. Confirmed by the RAR 3.00 PPMd archives under
 | 1     | Literal byte equal to the escape value itself. Emit `PPMEscChar` to the window. |
 | 2     | End of file in PPMd mode. Break out of the PPMd decode loop entirely. |
 | 3     | RARVM filter program follows (read via `ReadVMCodePPM`). |
-| 4     | New LZ-style match. Read four further PPM-decoded bytes giving a 32-bit distance, then one more giving `length` (extracted match length is `length + 31`); update last-distance buffer. |
+| 4     | New LZ-style match. Read **three** further PPM-decoded bytes as a big-endian 24-bit value; the distance is that value **+ 2**. Read one more byte; the match length is that value **+ 32**. Four decoded bytes in total. Does **not** touch the repeat-distance buffer. |
 | 5     | One-byte distance RLE match. Read one further PPM-decoded byte giving `length`; copy `length + 4` bytes from distance 1. |
 | ≥ 6   | Literal byte equal to the escape value. Same handling as value 1. |
 
 Values 4 and 5 are the "new distance match" and "single-byte-distance
 repeat" inside PPMd mode; both feed the LZ window directly without
 exiting PPMd mode.
+
+**Neither updates `OldDist`.** In an LZ block every match pushes its
+distance into the repeat buffer, so it is natural to assume the same
+here. These do not: the match is copied straight into the window and the
+repeat buffer keeps whatever the LZ side last put there. A decoder that
+pushes here diverges from the encoder the moment the stream returns to
+LZ mode and uses a repeat symbol.
+
+The distance field is three bytes, not four. Reading four consumes the
+length byte as part of the distance and every byte after that is off by
+one.
 
 ### 13.3 Model Persistence
 
