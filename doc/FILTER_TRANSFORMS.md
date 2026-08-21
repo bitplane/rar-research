@@ -380,10 +380,22 @@ filter automatically on the pixel data region.
 
 ## 8. AUDIO (RAR 3.x VM only)
 
-A 3-tap adaptive linear predictor per channel, with coefficient adaptation
-every 32 samples. Structurally identical to the RAR 2.0 audio compression
-mode (§17 of `RAR15_40_FORMAT_SPECIFICATION.md`), but 3 taps instead of 5
-and used as a filter rather than a block-level compression mode.
+**This is not the RAR 2.0 audio predictor.** RAR has two, they are not
+interchangeable, and using this one for RAR 2.0 decoding produces noise:
+
+| | RAR 3.x VM filter (this section) | RAR 2.0 audio block mode |
+|---|---|---|
+| Where | a VM filter over a byte range | a block-level compression mode |
+| Taps | `D1`, `D2`, `D3` | `D1`, `D2`, `D3`, `D4` |
+| Coefficients | `K1`, `K2`, `K3` | `K1`..`K5` |
+| Extra term | none | `K5 * ChannelDelta`, carried across blocks |
+| Specified in | here | §17 of `RAR15_40_FORMAT_SPECIFICATION.md` |
+
+Both are per-channel adaptive linear predictors that re-tune their
+coefficients every 32 samples, and the adaptation machinery is the same
+shape in each. Everything else differs.
+
+The rest of this section is the RAR 3.x VM filter.
 
 ### Forward transform
 
