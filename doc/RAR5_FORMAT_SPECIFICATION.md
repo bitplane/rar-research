@@ -1276,9 +1276,46 @@ and the Huffman tables are marked absent.
 
 ### 11.10 Dictionary Size Limits
 
-The maximum dictionary size depends on the platform pointer size:
-- 32-bit: up to 2^31 bytes (2 GB).
-- 64-bit: up to 2^40 bytes (1 TB).
+Three different ceilings apply, and they are easy to run together:
+
+| Ceiling | Value | What it is |
+|---|---|---|
+| Wire format | 2^40 (1 TB) | The largest size the 5-bit exponent plus fraction can express (§8). |
+| Reader version gate | **2^36 (64 GB)** | Above this, readers stop recognising the entry as a supported compression version at all. |
+| Runtime memory limit | build and machine dependent | Whether *this* reader on *this* box can afford an otherwise valid dictionary. |
+
+**The 64 GB gate is hard and exact.** `0x1000000000` is accepted as a
+dictionary size; anything above it is treated as an unknown compression
+version and refused before any allocation. Measured by patching the
+compression-information vint and stepping across the boundary with the
+5-bit fraction field, which moves in 2 GB steps at this exponent:
+
+| Declared dictionary | RAR 7.12 |
+|---|---|
+| 16 GB | `16 GB dictionary exceeds 4 GB limit and needs more than 16 GB memory to unpack.` |
+| 32 GB | `32 GB dictionary exceeds 4 GB limit and needs more than 32 GB memory to unpack.` |
+| **64 GB** (`0x1000000000`) | `64 GB dictionary exceeds 4 GB limit and needs more than 64 GB memory to unpack.` |
+| **66 GB** (`0x1080000000`) | `Unknown method in mid.txt` |
+| 128 GB, 256 GB, 1 TB | `Unknown method in mid.txt` |
+
+The message changes from a dictionary complaint to an unknown-method one
+between 64 and 66 GB, which is the gate. Below it the reader knows what
+the entry is and declines on size; above it the entry is not a thing it
+recognises.
+
+A dictionary inside the gate can still be refused by the third ceiling,
+which is what the "exceeds 4 GB limit" half of those messages is: a
+separate, configurable runtime budget. The two are independent, so a
+reader on a large machine accepts sizes a smaller one will not, up to the
+64 GB gate. Confirmed on hardware able to hold such a dictionary.
+
+**32-bit builds** stop far lower, refusing anything above `0x80000000`
+(2 GB), since the window has to fit a 32-bit address space.
+
+**Encoder rule:** never emit a dictionary above 64 GB. The wire format
+can express it and nothing will unpack it. A reader should refuse it on
+the version check, before sizing any buffer from the declared value; see
+`READ_SIDE_OVERVIEW.md` §10.
 
 ### 11.11 Encoder (RAR 5.0 LZ compressor)
 
