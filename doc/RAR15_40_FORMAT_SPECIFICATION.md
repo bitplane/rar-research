@@ -1635,6 +1635,10 @@ For flag value 3 (run-length):
   Treating the byte as unsigned gives the name the encoder meant;
   sign-extending reproduces the reference byte for byte. Say which you do.
 
+  Whichever you pick, pick it deliberately. In a language where the fallback
+  buffer is unsigned bytes, unsigned is what you get by writing nothing, and
+  in one where it is `char`, sign extension is. Neither default is a decision.
+
 The flag byte itself is consumed 2 bits at a time (MSB first), so one
 flag byte covers exactly 4 characters. A new flag byte is read each
 time `FlagBits == 0`.
