@@ -63,7 +63,7 @@ that require the higher version:
 | UNP_VER | LZ codec | Why the bump over the codec's native version |
 |---------|----------|-----------------------------------------------|
 | 15      | Unpack15 | — |
-| 20, 26  | Unpack20 | 26 = same codec, declared by encoders for files > 2 GB so older readers reject correctly (`_refs/unrar/unpack.cpp:172-173`). Audio mode is per-block (bit 15 of the block header), not UnpVer-gated. |
+| 20, 26  | Unpack20 | 26 = same codec, declared by encoders for files > 2 GB so older readers reject correctly. Audio mode is per-block (bit 15 of the block header), not UnpVer-gated. |
 | 29      | Unpack29 | PPMd, RARVM filters, 4 MB dict |
 | 36      | Unpack29 | Extended time, >2 GB files, `.partNN.rar` naming |
 | 40      | Unpack29 | `MHD_ENCRYPTVER` flag; encryption unchanged from 29 |
@@ -616,9 +616,7 @@ volume iff `EARC_NEXT_VOLUME` is set.
 Block type `0x75` (COMM_HEAD). Old-style comment used by RAR 1.5 and 2.x.
 Standalone block on disk; positioned immediately after the main archive
 header when `MHD_COMMENT` is set on the main, or immediately after a file
-header when `LHD_COMMENT` is set on the file. Modern readers
-(`_refs/unrar/arccmt.cpp::DoGetComment`) locate the archive comment by
-seeking to `SFXSize + SIZEOF_MARKHEAD3 + SIZEOF_MAINHEAD3` and asserting
+header when `LHD_COMMENT` is set on the file. Modern readers locate the archive comment by seeking to `SFXSize + SIZEOF_MARKHEAD3 + SIZEOF_MAINHEAD3` and asserting
 the next block has `HEAD_TYPE == 0x75`.
 
 RAR 3.x and later store comments as `HEAD3_NEWSUB` subblocks (type
@@ -2581,19 +2579,24 @@ reverse table construction needed.
 RAR 2.0 introduced a specialized audio compression mode for multimedia
 data. When the audio bit (bit 15 of the table-read peek word in §16.3)
 is set in a block header, data is processed through per-channel
-adaptive prediction instead of LZ matching. Verified against
-`_refs/unrar/unpack20.cpp` (`Unpack20`, `DecodeAudio`, `ReadTables20`)
-and `_refs/unrar/unpack.hpp:170-178` (`AudioVariables` struct).
+adaptive prediction instead of LZ matching.
+
+**Oracles for §17.** `rar15_40/rar250/AUDIO.RAR` and
+`rar15_40/rar250/unpack20_audio_text.rar` in the rars tree are RAR 2.50
+audio-mode archives; `rar15_40/rar154/audio_dos_names_unpack15.rar` and
+its Windows-names sibling cover the Unpack15 ancestor. Per-channel state
+carries across blocks, so a reset rule broken below shows up as drift
+partway through the member rather than as an immediate failure.
 
 ### 17.1 Audio Variables
 
-Reset rules (`_refs/unrar/unpack20.cpp:280-292`):
+Reset rules:
 
 | State | Reset on non-solid file open | Carries on solid file open | Carries across audio blocks within a file |
 |---|---|---|---|
 | `AudV[0..3]` (per-channel state) | yes — `memset(AudV, 0, sizeof(AudV))` | yes | **yes** — never reset between blocks |
 | `UnpChannelDelta` | yes — set to `0` | yes | yes (continuous across block boundaries) |
-| `UnpCurChannel` | yes — set to `0` | yes | mostly yes; reset to `0` only when the new block's `Channels` is **smaller** than the previous cursor (`unpack20.cpp:192-193`) |
+| `UnpCurChannel` | yes — set to `0` | yes | mostly yes; reset to `0` only when the cursor would fall outside the new block's `Channels`, i.e. `cur >= channels` |
 | `UnpChannels` | yes — set to `1` | yes | re-read from each audio block header (§16.3) |
 | `UnpAudioBlock` | yes — set to `false` | yes | re-read from each block header |
 | `UnpOldTable20[]` (Huffman tables) | yes — zeroed | yes | re-read or kept per the table-control bit |
@@ -2701,11 +2704,10 @@ the same channel. Both are sign-extended `int8_t` values stored in
 In an audio block the per-channel Huffman table `MD[CurChannel]`
 decodes a 9-bit alphabet (0..256, `MC20 = 257`). Symbol 256 means
 "end of current Huffman segment, read new tables" — exactly the same
-role as in LZ-mode (the equivalent LZ symbol is 269; see `unpack20.cpp:103-107`).
-On symbol 256:
+role as in LZ-mode, where the equivalent symbol is 269. On symbol 256:
 
-1. The audio decode loop calls `ReadTables20()`
-   (`unpack20.cpp:56-60`), which reads a fresh block header.
+1. The audio decode loop re-reads the block tables, which reads a fresh
+   block header.
 2. The new block can switch back to LZ mode, change channel count, or
    stay in audio mode with new Huffman tables.
 3. **Per-channel `AudV` state is preserved across this reread**, so
@@ -2740,8 +2742,8 @@ that determine whether the block uses LZ or PPMd compression.
 ### 18.1 Block Header
 
 Each compressed block begins byte-aligned. The decoder forces alignment
-via `Inp.faddbits((8 - Inp.InBit) & 7)` before peeking the header
-(`_refs/unrar/unpack30.cpp:638`, `ReadTables30`). The first bit at the
+via `Inp.faddbits((8 - Inp.InBit) & 7)` before peeking the header. The
+first bit at the
 aligned position determines the compression mode:
 
 | First bit at aligned byte | Meaning |
@@ -2794,8 +2796,7 @@ all four main tables (404 symbols total). Level decoder symbols:
 | 19     | Set to zero. Count = `11 + read_bits(7)` (11-138 times). |
 
 Symbol 16 at position 0 (no previous length yet) is illegal — the decoder
-must reject the block. Maximum code length: 15 bits. Verified against
-`_refs/unrar/unpack30.cpp` (`ReadTables30`).
+must reject the block. Maximum code length: 15 bits.
 
 ### 18.3 LZ Match Decoding
 
@@ -3160,9 +3161,16 @@ if header_byte & 0x20:
     re-init model with dictionary and order
 ```
 
-Model-order verified against `_refs/unrar/model.cpp:586-593`. Range
-coder init verified against `_refs/unrar/coder.cpp:9-17`
-(`RangeCoder::InitDecoder` reads 4 bytes via `GetChar`).
+The range coder's decoder init reads 4 bytes from the same byte source
+as the model.
+
+**Oracles for §19.** Six RAR 3.00 PPMd archives sit under
+`rar15_40/ppmd/` in the rars tree: plain text, escape-byte handling,
+mixed text and binary, a solid set that reuses the model across members,
+and two carrying embedded LZ repeats and distance matches.
+`farmanager170.rar` is a wild archive whose model reaches large-context
+allocator territory. A wrong model order or a wrong range-coder init
+desynchronises immediately, so any of them extracting proves both.
 
 If neither reset flag is set, continue using the existing PPMd context
 — but the range coder state is **always** re-initialised on every
@@ -3171,11 +3179,8 @@ PPMd block (the `Coder.InitDecoder` call is unconditional in
 
 ### 19.2 PPMd / LZ transition mechanics
 
-PPMd reads through `Unpack::GetChar()` (`unpack.hpp:403`):
-
-```
-byte GetChar() { return Inp.InBuf[Inp.InAddr++]; }
-```
+PPMd reads whole bytes straight off the input cursor, bypassing the bit
+reader entirely: it takes `InBuf[InAddr++]` and never touches `InBit`.
 
 This is a **direct byte fetch** — it advances `Inp.InAddr` by 1 and
 ignores `Inp.InBit`. Consequence: PPMd cannot start mid-byte. This is
@@ -3188,7 +3193,7 @@ Switches between modes:
 | Transition | Mechanism |
 |---|---|
 | LZ → PPMd (PPMd flag set in `ReadTables30`) | Already byte-aligned by `ReadTables30`. PPMd takes over from `InAddr` via `GetChar()`. The shared 1-byte header carries both the mode indicator and the PPMd flags. |
-| PPMd → LZ (escape value 0 inside PPMd) | `ReadTables30` is called again (`unpack30.cpp:89`). It byte-aligns (`InBit` is already 0 because PPMd never set it) and reads the next mode indicator. The PPMd model state is preserved unless a Reset flag (`0x20`) appears in the next PPMd block. |
+| PPMd → LZ (escape value 0 inside PPMd) | `ReadTables30` is called again. It byte-aligns (`InBit` is already 0 because PPMd never set it) and reads the next mode indicator. The PPMd model state is preserved unless a Reset flag (`0x20`) appears in the next PPMd block. |
 | PPMd → end-of-file (escape value 2 inside PPMd) | Decoder breaks out of the main loop. Surrounding caller observes `FileExtracted` to learn the file ended cleanly. |
 
 Volume boundaries are transport-layer only (see
@@ -3204,13 +3209,14 @@ When PPMd emits escape value 3 (RARVM filter; see
 `PPMD_ALGORITHM_SPECIFICATION.md` §13.2), the filter program follows
 **inside the PPMd stream** — every byte of the bytecode is read via
 `SafePPMDecodeChar()`, the PPMd-decoded byte source. The decoder
-remains in `BLOCK_PPM` mode throughout. Verified at
-`unpack30.cpp:97-102` (`ReadVMCodePPM`), `:326-340`.
+remains in `BLOCK_PPM` mode throughout.
+`rar15_40/rarvm/ppmd_embedded_vm_filter.rar` in the rars tree is exactly
+this case, and reading the bytecode off the bit stream instead fails on
+it.
 
 By contrast, when an LZ block embeds a filter (Main-symbol value
 range that triggers VM-code reading), the filter bytes are read from
-the **bit stream** via `Inp.getbits() >> 8; Inp.addbits(8)`. Verified
-at `unpack30.cpp:296-302` (`ReadVMCode`).
+the **bit stream** via `Inp.getbits() >> 8; Inp.addbits(8)`.
 
 So filter records have two distinct on-disk encodings depending on the
 surrounding block type:
@@ -3226,7 +3232,8 @@ transport differs.
 
 PPMd-embedded LZ-style matches (escape value 4: new distance,
 escape value 5: RLE) likewise read their distance and length bytes
-via `SafePPMDecodeChar`. See `unpack30.cpp:103-131`.
+via `SafePPMDecodeChar`. `rar15_40/ppmd/ppmd_lz_match_rar300.rar` and
+`ppmd_lz_repeat_rar3.cbr` carry escape 4 and escape 5 respectively.
 
 ### 19.4 PPMd Algorithm Reference
 
