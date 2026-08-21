@@ -1024,7 +1024,7 @@ field itself.
 | `HEAD3_MAIN`           | false           | `[2, DataSize)`                    |
 | `HEAD3_FILE` (no comment) | false        | `[2, DataSize)`                    |
 | `HEAD3_FILE` (CommentInHeader) | **true** | `[2, ReadPos)` — excludes comment |
-| `HEAD3_CMT`            | false           | `[2, DataSize)`                    |
+| `HEAD3_CMT`            | false           | `[2, 13)` — the 13-byte header struct only, never the comment payload |
 | `HEAD3_AV`             | —               | decoder does **not** verify        |
 | `HEAD3_SIGN`           | —               | decoder does **not** verify        |
 | `HEAD3_SERVICE`        | false           | `[2, DataSize)`                    |
@@ -1036,6 +1036,18 @@ field itself.
 header block: `HeadSize` for fixed-layout blocks; `HeadSize + ADD_SIZE
 (HighPackSize<<32 | PackSize)` never applies — the data region is
 **not** part of the header CRC, only the header bytes are.
+
+`HEAD3_CMT` is the other block whose CRC stops short of `HeadSize`. Its
+`HeadSize` is `13 + packed_comment_bytes`, but the checksum covers only
+the 13-byte header struct, so the range is a constant `[2, 13)`. The
+comment payload has its own `CommCRC` at offset +11 and needs no second
+guard. Measured on WinRAR 2.02's own archives, all three comment blocks
+in `fixtures/2.02/rar202-comment-nopsw.rar`:
+
+    block               stored    [2, 13)   [2, HeadSize)
+    main comment        0x05F8    0x05F8    0xED75
+    FILE1.TXT comment   0x5121    0x5121    0xD600
+    FILE2.TXT comment   0x64AD    0x64AD    0x92AB
 
 The `CommentInHeader` carve-out triggers when the file header sets `LHD_COMMENT` (bit `0x0008`) and an embedded comment
 follows the standard file-header fields. The decoder parses the fixed
