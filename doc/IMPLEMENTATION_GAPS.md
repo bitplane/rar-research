@@ -182,8 +182,8 @@ project), symbol-rename, dynamic capture via DOSBox-X / wine.
 These need either custom encoder switches that don't exist or a tailored
 input that happens to trigger an internal threshold.
 
-- **RAR 1.402 StMode**: requires a specific Huffman-decode burst pattern
-  (`NumHuf >= 16` per `unpack15.cpp:373`).
+- **RAR 1.402 StMode**: requires a specific Huffman-decode burst
+  pattern, `NumHuf >= 16`.
 - **Unpack20 audio with `Channels = 1..4`**: no committed vintage-encoder
   archive fixture currently proves a true audio block. `rars` has synthetic
   one-channel audio coverage at codec level and synthetic in-memory RAR 2.0

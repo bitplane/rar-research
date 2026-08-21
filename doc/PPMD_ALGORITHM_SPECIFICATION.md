@@ -1016,7 +1016,7 @@ pseudocode encodes but are easy to misread:
    touched by rescale; only the probability model changes.
 
 There is no lazy deferral — rescale must fire on the exact update that
-pushes `Freq` past 124 (`model.cpp:404, 426, 461`). Deferring by one
+pushes `Freq` past 124. Deferring by one
 symbol desyncs encoder and decoder.
 
 #### Information inheritance on escape
@@ -1360,7 +1360,8 @@ stream. The block header provides:
 ### 13.2 Escape Processing
 
 When a decoded byte equals the escape value, the next PPM-decoded byte
-indicates the action. Verified against `_refs/unrar/unpack30.cpp` (the
+indicates the action. Confirmed by the RAR 3.00 PPMd archives under
+`rar15_40/ppmd/` in the rars tree (the
 `NextCh` switch in `Unpack29` / `Unpack29Phase`):
 
 | Value | Meaning |
@@ -1398,7 +1399,7 @@ identical across all four range coder variants — only the bit-packing differs.
 To build a RAR-compatible PPMd compressor from the 7-Zip reference sources:
 
 1. **Model:** take `_refs/7zip/C/Ppmd7.c` + `Ppmd7.h` verbatim. This is the
-   PPMdH model Shkarin published in 2001 and is what compatible RAR reader's `model.cpp`
+   PPMdH model Shkarin published in 2001 and is what every RAR reader
    implements (both use `MAX_O = 64`, same SEE tables, same escape handling).
 2. **Symbol encode loop:** port `Ppmd8_EncodeSymbol` from
    `_refs/7zip/C/Ppmd8Enc.c` but rebind every `Ppmd8_*` model call to its

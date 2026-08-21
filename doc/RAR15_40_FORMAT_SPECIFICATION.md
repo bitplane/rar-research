@@ -2581,12 +2581,21 @@ data. When the audio bit (bit 15 of the table-read peek word in §16.3)
 is set in a block header, data is processed through per-channel
 adaptive prediction instead of LZ matching.
 
-**Oracles for §17.** `rar15_40/rar250/AUDIO.RAR` and
-`rar15_40/rar250/unpack20_audio_text.rar` in the rars tree are RAR 2.50
-audio-mode archives; `rar15_40/rar154/audio_dos_names_unpack15.rar` and
-its Windows-names sibling cover the Unpack15 ancestor. Per-channel state
-carries across blocks, so a reset rule broken below shows up as drift
-partway through the member rather than as an immediate failure.
+**No vintage oracle for §17.** Every archive in the fixture trees with
+"audio" in its name turns out to select normal LZ. `rar250/AUDIO.RAR` is
+a genuine RAR 2.50 `-mm` archive over a WAV payload, and its first
+table-read peek is `0x0040`: bit 15 clear, so the encoder declined audio
+mode. `rar250/unpack20_audio_text.rar` peeks `0x2221`, likewise LZ. The
+Unpack15 `audio_*_unpack15.rar` pair are audio-*shaped payloads*, not
+audio blocks.
+
+So §17 is verified only against synthetic streams: rars covers the codec
+directly and round-trips in-memory RAR 2.0 archives for channel counts 1
+through 4. Nothing here is confirmed against a vintage encoder's output.
+A useful fixture must have bit 15 set in the first table-read peek and
+should pin the channel count. Per-channel state carries across blocks,
+so a broken reset rule below drifts partway through a member rather than
+failing cleanly, which is the hard kind of bug to find without one.
 
 ### 17.1 Audio Variables
 

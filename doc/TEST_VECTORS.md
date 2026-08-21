@@ -165,9 +165,9 @@ byte.
 Spec: `RAR13_FORMAT_SPECIFICATION.md` §7 and `ENCRYPTION_WRITE_SIDE.md` §1.
 Subtractive 3-byte stream cipher: a 3-byte key is derived from the password
 (`Key[0]+=P`, `Key[1]^=P`, `Key[2]=rotl8(Key[2]+P,1)`) and then per-byte output
-is `B - Key[0]` after `Key[1]+=Key[2]; Key[0]+=Key[1]`. Round-trip against
-`_refs/unrar/crypt1.cpp` (`SetKey13` / `Decrypt13`) or
-`_refs/XADMaster/XADRAR13CryptHandle.m`.
+is `B - Key[0]` after `Key[1]+=Key[2]; Key[0]+=Key[1]`. Round-trip
+against `rar13/STOREPWD.RAR` in the rars tree, password `password`: it
+is stored rather than compressed, so it isolates the cipher.
 
 ### 9.1 Packed-comment fixed-key vector
 
@@ -297,8 +297,8 @@ input:  10 15 14 17 20
 output: F0 FB 01 FD F7         # previous minus each byte (prev starts at 0)
 ```
 
-Sign convention matches `FILTER_TRANSFORMS.md §4` and the inverse in
-`_refs/unrar/unpack50.cpp` (`DstData[DestPos] = (PrevByte -= Data[SrcPos++])`).
+Sign convention matches `FILTER_TRANSFORMS.md` §4: the inverse keeps a
+running `PrevByte` and subtracts each source byte into it.
 
 ### ARM (BL)
 
@@ -367,9 +367,9 @@ Spec: `INTEGRITY_WRITE_SIDE.md` §8. Per-block-type rules for which
 bytes feed into `HEAD_CRC`. No stand-alone vectors possible (depends
 on block content); the oracle is "compatible RAR reader accepts our archive".
 
-Cross-check: assemble a block, run our CRC over the documented byte
-range, compare against what `GetCRC15` / `GetCRC50` compute in
-a public RAR reader / `arcread.cpp`.
+Cross-check: assemble a block, run the CRC over the documented byte
+range, and confirm a reference binary opens the archive without
+complaint. A header CRC is checked on open, so acceptance is the test.
 
 ## 16. Archive round-trip test matrix
 

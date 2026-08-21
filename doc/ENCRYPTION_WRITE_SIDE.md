@@ -531,7 +531,9 @@ So:
 - `V1`    = Fn after `Count + 16` iterations.
 - `V2`    = Fn after `Count + 32` iterations.
 
-Verified against `_refs/unrar/crypt5.cpp` (`pbkdf2`).
+Oracle: `rar50/password_aes.rar` and `rar50/header_encrypted.rar` in
+the rars tree. PBKDF2 has no near misses, so either the key lands or
+nothing decrypts.
 
 **Performance note.** For the same password, the HMAC inner/outer SHA-256
 states are the same, so they can be computed once and reused across all
@@ -674,8 +676,8 @@ shortcut.
 
 | Limit | Value | Iterations | Source |
 |-------|-------|-----------|--------|
-| `CRYPT5_KDF_LG2_COUNT` (compatible RAR reader default) | 15 | 32,768 | `_refs/unrar/crypt.hpp:19` |
-| `CRYPT5_KDF_LG2_COUNT_MAX` (decoder hard maximum) | 24 | 16,777,216 | `_refs/unrar/crypt.hpp:20` (`SetKey50` rejects anything above this) |
+| Writer default | 15 | 32,768 | What WinRAR stores, and what rars writes as `WRITE_KDF_COUNT_LOG` |
+| Decoder hard maximum | 24 | 16,777,216 | Readers reject anything above this |
 
 **Encoder policy:**
 
@@ -850,7 +852,7 @@ block headers **after** the main header are encrypted.
 Encoder subtleties:
 
 - **Re-key per block vs. reuse.** The decoder calls `SetCryptKeys` with each
-  block's 8-byte salt (`arcread.cpp:163`), which re-runs the 262144-iteration
+  block's 8-byte salt, which re-runs the 262144-iteration
   SHA-1 KDF every time. This is catastrophically slow unless the encoder
   writes the **same salt for every block** — then the `KDF3Cache` hits and
   the KDF runs exactly once per archive. **An encoder targeting RAR 3.x

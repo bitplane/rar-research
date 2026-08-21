@@ -240,14 +240,13 @@ variants (`BLEQ`, `BLNE`, `BLLT`, etc., where `cond != 1110`) and all
 non-BL instructions whose high byte happens to differ from `0xEB` are
 left untransformed by both the encoder and the decoder. This is a
 limitation of the filter, not a bug — it keeps the inverse path
-trivial. Verified against `_refs/unrar/unpack50.cpp:474`
-(`if (D[3]==0xeb)` — sole gate, no condition-code dispatch).
+trivial. The high byte equalling `0xEB` is the sole gate: there is no
+condition-code dispatch anywhere in the transform.
 
 ### Trap: there is no alignment scan in the inverse
 
 The RAR 5.0 inverse transform iterates with a fixed 4-byte stride from
-`offset 0` of the filter region (`for (CurPos=0; CurPos+3<DataSize;
-CurPos+=4)` in `unpack50.cpp:471`). It does **not** scan `pos = 0..3`
+`offset 0` of the filter region. It does **not** scan `pos = 0..3`
 for the best alignment — that's an encoder-side heuristic only. The
 encoder is responsible for placing the filter region's start so that
 the first ARM instruction lands at offset 0 modulo 4; if it doesn't,
