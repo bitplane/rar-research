@@ -61,12 +61,19 @@ A pure XOR stream cipher: `*Data ^= keystream_byte`. XOR is **self-inverse**
 
 ### Key init
 
-Historical RAR 1.5 readers use the IEEE 802.3 CRC32 of the password as a seed,
-plus per-byte mixing of the password against the same CRC32 lookup table.
+Historical RAR 1.5 readers seed the key from the password's CRC32 register
+**before** the final inversion, plus per-byte mixing of the password against
+the same CRC32 lookup table.
+
+That seed is not what a CRC32 library hands back. The usual `crc32(data)` folds
+in a closing `^ 0xFFFFFFFF`; the seed here is the running register with that
+step skipped, which is the same number XORed with `0xFFFFFFFF` again. Feed a
+library CRC in unchanged and every keystream byte is wrong, so WinRAR reports a
+bad password on an archive whose password is fine.
 
 ```
 def set_key_15(password):
-    psw_crc = crc32_ieee(password)              # standard reflected CRC32
+    psw_crc = crc32_ieee(password) ^ 0xFFFFFFFF  # register before final inversion
     Key = [0, 0, 0, 0]                          # four 16-bit words
     Key[0] =  psw_crc        & 0xFFFF
     Key[1] = (psw_crc >> 16) & 0xFFFF
