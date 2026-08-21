@@ -815,6 +815,23 @@ tree, a WinRAR 7.21 archive carrying a Quick Open cache under header
 encryption (password `Password`, capital P). Described from the writer's perspective in
 `ARCHIVE_LEVEL_WRITE_SIDE.md` §4.1.
 
+**The cache is also header redundancy, which matters when testing.**
+`HeaderData` is a verbatim copy, so a reader that finds the live header
+corrupt can recover it from here. Measured on a WinRAR archive with a
+Quick Open cache, corrupting one byte of the file header's CRC32:
+
+| live header | cached copy | RAR 7.12 |
+|---|---|---|
+| valid | valid | `All OK` |
+| **corrupt** | valid | `All OK` |
+| **corrupt** | **corrupt** | `Corrupt header is found` |
+
+Worth knowing before crafting test archives. Edit a header in an archive
+that has a Quick Open cache and the reference reader may quietly extract
+from the pristine copy instead, so the experiment measures nothing and
+looks like a pass. Either strip the cache, build the archive with
+`-qo-`, or apply the same edit to both copies.
+
 **Security note:** Use the same access pattern (quick open vs. direct) for both
 displaying and extracting files. Divergence could allow showing one filename while
 extracting different content.
