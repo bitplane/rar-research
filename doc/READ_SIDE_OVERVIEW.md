@@ -411,6 +411,33 @@ mismatch after decrypting with a user-supplied password should be reported as
 per-file password-check field, so the reader cannot reliably distinguish the
 two cases. Missing password is a separate "password required" condition.
 
+**In a solid group you often can distinguish them, and should.** Every
+member of a solid group is decrypted with the same key, so one member
+passing its CRC proves the password. Any later failure in that group is
+therefore damage, not a bad password, and saying "or wrong password"
+sends the user off retyping a password that was right.
+
+Track a per-group flag, initially false. Set it when a non-empty,
+non-stored member passes its checksum. Clear it at a non-solid boundary.
+Then report:
+
+| Flag | Report |
+|---|---|
+| false | `checksum error (corrupt file or wrong password)` |
+| true | `checksum error` |
+
+Measured on a solid RAR 3.93 archive of three compressed members with
+password `secret`. Damaging bytes late in the stream and extracting with
+the **correct** password gives `m1.txt OK`, `m2.txt OK`, then bare
+`m3.txt - checksum error`. Supplying the **wrong** password instead
+fails from the first member and every line carries the longer form:
+`Checksum error in the encrypted file m1.txt. Corrupt file or wrong
+password.`
+
+Note the flag must be set by a member that actually decompressed. A
+stored or empty member proves nothing about the codec state, and in a
+solid group the codec state is what a later member depends on.
+
 ## 7. Encrypted-archive read flow
 
 Two distinct modes (see `ENCRYPTION_WRITE_SIDE.md` §6):
