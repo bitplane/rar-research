@@ -257,6 +257,14 @@ directly using a record-type stamp at offset 0 of each 12-byte unit:
 - `CPpmd7_Node`: `UInt16 Stamp` — `Stamp == 0` marks a free record (head
   records and the guard at `lo_unit` use `Stamp == 1`)
 
+**The stamp polarity here is inverted from the C reference.** That code stamps
+free records `1` and writes `0` into the guard at `LoUnit`; this document uses
+`0` for free and `1` for the guard. Both are self-consistent, the values never
+leave memory, and neither choice touches the archive. Compare a single line
+across the two and it will look like an off-by-one; compare the guard against
+the test that reads it (`if node2.Stamp != 0`) and it is the same algorithm.
+Pick one polarity and use it in both places.
+
 Algorithm:
 
 ```
