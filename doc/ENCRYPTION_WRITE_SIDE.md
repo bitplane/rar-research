@@ -559,9 +559,24 @@ use raw CRC32 / BLAKE2sp. Archive-wide header encryption (`HEAD_CRYPT`) alone
 does not trigger file-hash MAC conversion; it only encrypts the headers that
 carry those hash fields.
 
-For split files, non-final parts can store a CRC32 of the packed bytes in that
-volume. That packed-part CRC is checked raw; RAR5 does not apply HMAC conversion
-to it.
+For split files, non-final parts store a CRC32 of the packed bytes in that
+volume, and it is stored and checked raw. The signal is in the encryption record
+itself: a reader converts a hash when that record's `HashMAC` bit is set, so a
+non-final part clears the bit and a final part sets it. The salt, IV layout and
+KDF count stay identical across the parts; only the flag differs.
+
+From a 10-volume `-ma5 -m5 -v20k -phunter2` set written by WinRAR 7.12: parts 1
+to 9 carry encryption flags `0x01` and part 10 carries `0x03`, all with the same
+salt. Part 1's stored CRC32 is exactly the CRC32 of the 20,224 ciphertext bytes
+in that volume, and part 10's is the MAC of the whole file's CRC32.
+
+An encoder that sets `HashMAC` on every part instead has told the reader to
+convert the packed-part CRCs too, and a reader that follows the flag will fail
+them. Set the bit on the last part only.
+
+Related: WinRAR clears `HashMAC` altogether on the earlier parts rather than
+converting the packed-part hashes, so a volume set is not an argument for
+skipping MAC conversion anywhere the bit is set.
 
 **Which hash types need MAC conversion.** Only the RAR5 CRC32 and BLAKE2sp
 file-content hash forms need conversion. `HASH_NONE` has nothing to convert;
