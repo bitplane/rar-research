@@ -303,7 +303,8 @@ operating on raw RGB bitmap scanlines, similar to PNG's filter type 4
 
 ```
 def forward_rgb(buf, width, posR):
-    # width  = (R[0] - 3) in the decoder; scanline width in bytes
+    # width  = R[0] - 3, and R[0] is the scanline stride plus 3, so width
+    #          is the stride itself: 3 * pixels_per_row for 24-bit RGB.
     # posR   = R[1]; which of the 3 channel slots is the red channel
     #          (0, 1, or 2) — typically 2 for BGR or 0 for RGB
     n        = len(buf)
@@ -337,6 +338,21 @@ def forward_rgb(buf, width, posR):
         out[i + 2] = (out[i + 2] - g) & 0xFF
     return out
 ```
+
+### Trap: R[0] is the stride plus 3
+
+The filter's first register is not the scanline stride. It is the stride
+plus 3, and the decoder subtracts that 3 before using it. Only then do
+`out[i - width]` and `out[i - width - 3]` land on the byte directly above
+and the byte above-and-one-pixel-left, which is the Paeth neighbourhood
+the predictor is built for.
+
+Set R[0] to the bare stride and both taps shift one pixel right. The
+transform still round-trips, because the decoder recomputes exactly what
+the encoder did, so nothing detects the mistake except the compressed
+size. On a 64x64 RGB image (stride 192) through RAR 2.9: 1293 bytes with
+R[0] = 195, 1755 bytes with R[0] = 192. The filter keeps about a third of
+its value and stays silent about the rest.
 
 ### Reverse transform
 
