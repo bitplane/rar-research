@@ -1417,8 +1417,21 @@ targeting v0 readers must not set them.
 When an encoder extends an existing v0 solid archive with a new file
 and the cumulative dictionary now exceeds what the v0 encoding can
 express (e.g. a non-power-of-2 size after a dictionary bump), it emits
-the new file with **algorithm version 0 in bits 0–5** but **bit 20
-(`FCI_RAR5_COMPAT`) set**. The decoder then:
+the new file with **algorithm version 1 in bits 0–5** and **bit 20
+(`FCI_RAR5_COMPAT`) set**.
+
+Version 1 is what makes the header readable at all here. A decoder
+seeing version 0 parses only the power-of-two exponent in bits 10–14; it
+never looks at the fraction in bits 15–19 and never looks at bit 20. So
+version 0 plus bit 20 is not a downgrade request, it is a header whose
+extra fields are invisible: the reader takes the bare power of two and
+builds the wrong window. rars rejects the combination outright rather
+than guess. §8's table has this right.
+
+Read it as two independent switches. Bits 0–5 select **how the header is
+parsed**, and bit 20 selects **which codec runs**. Version 1 turns on the
+fractional dictionary parser, then bit 20 pulls the engine back to
+Unpack50. The decoder then:
 
 - Runs the Unpack50 algorithm (64-symbol Distance table, no new
   opcodes).
