@@ -86,10 +86,9 @@ specification §2.10. `compatible RAR reader`'s `blake2s_init_param` packs these
 
 The 32-byte BLAKE2 parameter block — required when configuring a
 generic BLAKE2s library to interoperate with RAR's BLAKE2sp variant —
-is fully constrained. Verified against `_refs/unrar/blake2s.cpp`
-(`blake2s_init_param`, lines 58-72) where the IV-XOR pattern
-`h[0] ^= 0x02080020`, `h[3] ^= 0x20000000 | (node_depth << 16)` decodes
-to the byte layout below:
+is fully constrained. The IV-XOR pattern a compact implementation uses,
+`h[0] ^= 0x02080020` and `h[3] ^= 0x20000000 | (node_depth << 16)`,
+decodes to the byte layout below:
 
 | Field             | Width | Value (RAR's BLAKE2sp) |
 |-------------------|------:|-----------------------|
@@ -110,8 +109,12 @@ in the per-state runtime field, not in the IV-XOR). RAR sets it on:
 - the eighth (final) leaf state (`S[7]`), unconditionally
 
 It is **not** propagated to leaves 0..6 even when the input ends
-mid-block on those leaves. Verified against `blake2sp_init` in
-`_refs/unrar/blake2sp.cpp` (lines 16-28).
+mid-block on those leaves.
+
+**Oracle for §1.2.** `rar50/stored_blake2.rar` in the rars tree carries
+a BLAKE2sp file hash over a stored member, so it checks the hash with no
+codec in the way. Get the parameter block or the last-node rule wrong
+and the digest is simply a different 32 bytes.
 
 A generic BLAKE2s library that exposes a `blake2s_init_param` taking a
 full parameter struct can produce bit-identical output by populating
@@ -304,10 +307,14 @@ this is cheap.
 
 The recovery record is a block of header type `0x78`
 (`HEAD3_PROTECT`). Its presence is advertised by the `MHD_PROTECT` bit
-(`0x0040`) in the main archive header's flags
-(`arcread.cpp:236`).
+(`0x0040`) in the main archive header's flags.
 
-**Header layout (26 bytes, `SIZEOF_PROTECTHEAD` in `headers.hpp:13`):**
+**Oracle for §3.** `rar15_40/rar250_protect_head_rr1.rar` and
+`rar250_protect_head_rr5.rar` in the rars tree are RAR 2.50 archives
+built with `-rr1` and `-rr5`, so the two differ only in sector count and
+pin the layout against a real encoder.
+
+**Header layout (26 bytes):**
 
 | Offset | Field         | Type    | Description |
 |--------|---------------|---------|-------------|
@@ -315,7 +322,7 @@ The recovery record is a block of header type `0x78`
 | +2     | `HEAD_TYPE`   | uint8   | `0x78`. |
 | +3     | `HEAD_FLAGS`  | uint16  | Block flags. Always `0xC000` in observed RAR 2.50 fixtures (`LONG_BLOCK` + the `0x4000` bit, the latter signalling "skip if unknown" semantics in the RAR 2.x flag space). |
 | +5     | `HEAD_SIZE`   | uint16  | Header size (always 26). |
-| +7     | `ADD_SIZE`    | uint32  | Byte count of the data area that follows (`ProtectHeader::DataSize`, `arcread.cpp:468`). Equal to `TotalBlocks * 2 + RecSectors * 512` — see "Reconstructed data-area layout" below. |
+| +7     | `ADD_SIZE`    | uint32  | Byte count of the data area that follows. Equal to `TotalBlocks * 2 + RecSectors * 512` — see "Reconstructed data-area layout" below. |
 | +11    | `Version`     | uint8   | RAR-format version of the protected archive (i.e., `UNP_VER`-style: `0x14 = 20` for RAR 2.0/2.50 inputs). The 2002-era public spec text claimed "always 1", but observed RAR 2.50 fixtures write `0x14` here. |
 | +12    | `RecSectors`  | uint16  | `N` — number of 512-byte **parity** sectors emitted (i.e., the `-rrN` value with N ≤ 8 in RAR 2.50). |
 | +14    | `TotalBlocks` | uint32  | Number of full 512-byte **data** sectors covered by this record — `floor(protected_byte_count / 512)`. Trailing 0..511 bytes are **not** protected and don't appear in either the tag table or the parity. Confirmed by `fixtures/1.5-4.x/rar250_protect_head_rr1.rar` and `…_rr5.rar` (both have a 102971-byte preceding archive → 201 full sectors + 59 unprotected trailing bytes). |
@@ -649,26 +656,25 @@ missing data shards. No encoder needs this path.
 
 - `ND + NR ≤ 65535` vs 255 for the 8-bit variant — supports much larger
   archives and/or much higher recovery ratios.
-- RAR 5.0 removed the `NR ≤ ND` restriction in 2021 (`rs16.cpp:99-100`),
-  allowing recovery ratios above 100%. An encoder can produce e.g. 150%
+- RAR 5.0 removed the `NR ≤ ND` restriction in 2021, allowing recovery
+  ratios above 100%. An encoder can produce e.g. 150%
   recovery (`NR = 1.5 × ND`) to survive more simultaneous losses.
 - Shards can be arbitrary sizes (limited by chunking, ~64 MB buffer in
   compatible RAR reader) as opposed to the fixed 512-byte sectors of RSCoder.
 
 ### 4.6 RAR 5.0 recovery record inline format
 
-The inline RR is a RAR 5.0 service header named `"RR"`
-(`SUBHEAD_TYPE_RR` in `_refs/unrar/headers.hpp:121`). What's verifiable
-from public source:
+The inline RR is a RAR 5.0 service header named `"RR"`. Oracles:
+`rar50/with_recovery.rar` plus the `golden/stored_recovery_{1,5,10,50}`
+set, which walks the percentage up and so pins the sizing formula in
+§4.4 at four points rather than one.
 
-- Reader behaviour: unrar locates the RR via the `MainHead.Locator`
-  extra field (`RROffset`) when present, else by scanning the block
-  stream for `HEAD_SERVICE` with name "RR"
-  (`_refs/unrar/arcread.cpp:80-93`).
+- Reader behaviour: a reader locates the RR via the main header's
+  locator extra field (`RROffset`) when present, else by scanning the
+  block stream for `HEAD_SERVICE` with name "RR".
 - Service-header `SubData`: stores the **recovery-percent** value only
   (single byte ≤ RAR 6.02, vint from RAR 6.10+ supporting up to 1000%).
-  See `arcread.cpp:908-916`. This is metadata the reader displays,
-  *not* the parity payload.
+  This is metadata the reader displays, *not* the parity payload.
 - Parity payload: lives in the service header's data area, sized by
   the standard RAR 5.0 service-header `DataSize` field. Its internal
   field structure is **not parsed by unrar** — the inline RR is
@@ -750,7 +756,7 @@ against all six fixtures with predicted == observed for every value.
 
 This formula describes the **WinRAR 6.02** encoder path. RAR 6.10+
 extended the recovery-percent metadata field in `SubData` to a vint
-supporting values up to 1000% (see `arcread.cpp:908-916`); whether
+supporting values up to 1000%; whether
 the same encoder formula clamps to 100 in the 6.10+ path or scales
 through the full range is currently untested — there's no
 `-rr1000` (or similar) fixture in the tree to compare against. A
@@ -857,9 +863,9 @@ outputs.
 
 ### 4.7 RAR 5.0 `.rev` files
 
-`_refs/unrar/recvol5.cpp` produces and reads `.rev` files for RAR 5.0
-multi-volume archives using the same 16-bit RS codec as the inline RR.
-Verified file format (`RecVolumes5::ReadHeader`, lines 439-489):
+RAR 5.0 `.rev` files use the same 16-bit RS codec as the inline RR.
+Oracle: the `rar50/multivol_rev.part1..5` set in the rars tree, five
+data volumes plus `.rev` files for parts 1 and 2. File format:
 
 ```
 File layout (REV5_SIGN_SIZE = 8, max HeaderSize = 0x100000):
@@ -1031,16 +1037,15 @@ header block: `HeadSize` for fixed-layout blocks; `HeadSize + ADD_SIZE
 (HighPackSize<<32 | PackSize)` never applies — the data region is
 **not** part of the header CRC, only the header bytes are.
 
-The `CommentInHeader` carve-out (`arcread.cpp:430-431`) triggers when the
-file header sets `LHD_COMMENT` (bit `0x0008`) and an embedded comment
+The `CommentInHeader` carve-out triggers when the file header sets `LHD_COMMENT` (bit `0x0008`) and an embedded comment
 follows the standard file-header fields. The decoder parses the fixed
 fields, stops at `ReadPos`, and CRCs only what it parsed — the trailing
 comment bytes are **not** protected by the header CRC, they have their
 own CRC inside the comment subrecord. The encoder must match: compute
 CRC over the non-comment portion only.
 
-`HEAD3_AV` and `HEAD3_SIGN` have broken/inconsistent CRCs in practice
-(`arcread.cpp:520-522`). The decoder tolerates this. An encoder emitting
+`HEAD3_AV` and `HEAD3_SIGN` have broken or inconsistent CRCs in
+practice, and readers tolerate it. An encoder emitting
 these block types should compute them normally over `[2, DataSize)` —
 the decoder won't check, but matching the natural rule is harmless.
 
