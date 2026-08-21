@@ -203,10 +203,21 @@ would escape.
 
 ### 5.2 Symlink-chain detection: `LinksToDirs`
 
-Entry point: `filefn.cpp:569+`. Called before extracting any file
-once a symlink-with-`..` has been seen. Walks every component of the
-target path on disk and returns `true` if any existing component is a
-symlink.
+Called before extracting any file once a symlink-with-`..` has been seen. Walks
+every component of the target path on disk, looking for a component that already
+exists and is a symlink.
+
+**It does not only detect.** The reference reader deletes the offending link,
+the symlink on Unix or the junction on Windows, and carries on so the extraction
+can create a real directory in its place. Only a failed deletion stops the file
+being extracted. So a reader built from a detect-and-abort reading of this
+section refuses archives the official tools extract, whenever a directory in the
+archive collides with a link left on disk by an earlier one.
+
+Deleting is also the more dangerous of the two, since it removes something the
+user already had. A reader that would rather not may refuse the entry instead,
+and should say so: the security property is the same either way, and only the
+outcome for the user differs. What is not safe is following the link.
 
 The attack it defeats:
 
