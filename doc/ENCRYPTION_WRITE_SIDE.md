@@ -422,6 +422,18 @@ fixtures write the same 8-byte salt in every split `FileHead`; individual
 fragments need not be AES-block aligned, but the concatenated logical packed
 stream is block-aligned.
 
+WinRAR's own output relies on this. A 10-volume `-ma5 -m5 -v20k -phunter2` set
+from WinRAR 7.12 has a first fragment of 20,224 packed bytes and eight more of
+20,223, so eight of the ten cuts land inside a 16-byte block. Reassembling the
+fragments and decrypting the concatenation reproduces the file exactly.
+
+The one obligation this puts on a reader is about its own buffering, not about
+the format: never hand a partial block to the block cipher. Hold the tail bytes
+back and prepend them to the next fragment's first read. A reader that instead
+decrypts each fragment independently desynchronises at the first unaligned
+cut, which is easy to mistake for a format rule that fragments must be
+aligned.
+
 ### 4.7 Trap: salt reuse across headers
 
 Each encrypted file member carries its own 8-byte salt. The encoder

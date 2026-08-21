@@ -166,7 +166,24 @@ network share mounted from Windows, because the file creation will
 fail otherwise — `MakeNameUsable(Name, Extended=true)` enables the
 stricter mode (`pathfn.cpp:518, 526`).
 
-### 4.4 The "extended" mode toggle
+### 4.4 Unicode normalization across hosts
+
+macOS stores filenames decomposed, so `ä` is `a` followed by `U+0308`, and an
+archive written there carries the decomposed form. NTFS accepts those bytes but
+a great deal of Windows software will not find the file afterwards, because it
+looks for the precomposed `U+00E4`.
+
+A reader extracting on Windows normalizes to precomposed form when the header
+says the archive came from a Unix host (`HostOS` 1 in RAR 5.0). Not otherwise:
+a Windows-written name is already in the form its filesystem expects, and
+normalizing it anyway would rename files nobody asked to rename.
+
+This is a compatibility measure, not a security one. It runs after the path
+sanitization above, never instead of any of it, and normalizing must not
+re-introduce a separator or a `..` component. Check the result again if the
+normalizer is not one you control.
+
+### 4.5 The "extended" mode toggle
 
 `MakeNameUsable` takes an `Extended` parameter (`bool`). In non-
 extended mode it only strips `?` and `*`. In extended mode it adds
