@@ -371,7 +371,9 @@ procedure RestartModel():
     clear all free_lists to 0
     text = base + align_offset
     hi_unit = text + size
-    lo_unit = units_start = hi_unit - (size / 8 / UNIT_SIZE) * 7 * UNIT_SIZE
+    // Every division here is integer, and the truncation is load-bearing.
+    text_units = size / 8 / UNIT_SIZE       // one eighth of the pool, in units
+    lo_unit = units_start = hi_unit - text_units * 7 * UNIT_SIZE
     glue_count = 0
     order_fall = max_order
     run_length = init_rl = -(min(max_order, 12)) - 1
@@ -407,6 +409,17 @@ procedure RestartModel():
             see[i][k].shift = PPMD_PERIOD_BITS - 4    // = 3
             see[i][k].count = 4
 ```
+
+The units region is exactly `7 * text_units` units taken off the top, and
+everything the divisions throw away stays in the text region: `size % 96` from
+the eighth, plus `size % UNIT_SIZE` from the pool itself. Give that slack to
+the units region instead and it holds a few more units than the reference does.
+
+That is not cosmetic. The allocator's job is to run out at the same moment on
+both sides, because running out triggers `RestartModel`, and a restart the
+encoder made and the decoder did not is a stream that decodes to garbage from
+that point. A few units of headroom moves the moment.
+
 
 ### 5.3 Ppmd7_Init
 
