@@ -187,6 +187,29 @@ scanning for block-start markers. This is what makes broken-header
 recovery possible: a damaged block's length still navigates the
 reader to the next one.
 
+**The walk must make forward progress.** `HeadSize` comes off the disk,
+so a corrupt or hostile archive can set it to zero and leave the next
+position equal to the current one. A loop that just seeks and repeats
+then spins on that offset forever, reading the same header, which turns
+a malformed file into a hang. Reject the block when the next position
+is not strictly greater than the current one.
+
+Two ways to get there, and either is enough:
+
+- Compare directly, failing when `next_pos <= cur_pos`.
+- Floor `HeadSize` at the smallest header the format can express, 7
+  bytes for RAR 1.5–4.x. The block extent is then always positive and
+  the position always moves.
+
+RAR 5.0 gets this for free: its header extent is `4 + sizeof(HeadSize
+vint) + HeadSize`, and the two fixed terms are at least 5 bytes however
+small `HeadSize` is. RAR 1.5–4.x has no such floor built in and needs
+the explicit check.
+
+Measured on a RAR 1.5 archive edited to carry `HeadSize = 0` with the
+long-block flag cleared, so the block extent is exactly zero: RAR 7.12,
+UnRAR 7.20 and rars all reject it and none of them hang.
+
 ### 3.2 Block-size accounting
 
 Two different quantities get confused here, so keep them apart. The
@@ -545,6 +568,7 @@ A reader will encounter, at minimum:
 | Truncation mid-block | Report "unexpected EOF at block type X". |
 | Dictionary size exceeds cap | Refuse before allocating. |
 | Infinite LZ loop | Cap output size (caller-configured) and abort on overshoot. |
+| Block walk does not advance | Abort. The next position must be strictly greater than the current one; see §3.1. |
 
 A reader that loops, crashes, or silently produces wrong data on any
 of these is unacceptable — the archive file is attacker-controlled
