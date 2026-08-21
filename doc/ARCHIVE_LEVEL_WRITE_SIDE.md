@@ -504,6 +504,13 @@ Key observations:
   present and must carry the `MHD_VOLUME` flag. The `MHD_FIRSTVOLUME`
   flag (RAR 3.0+) is only set on volume 1.
 
+**Every volume in a set must agree on header encryption.** All encrypted
+or all plaintext, with no mixing. Readers enforce it: splicing a
+plaintext volume into an encrypted-header set makes RAR 7.12 and UnRAR
+7.20 abort with a bad-archive error rather than extract. See
+`READ_SIDE_OVERVIEW.md` §8.1.1 for why the set rather than the volume is
+the unit of trust.
+
 ### 2.3 The first-volume-only marker
 
 RAR 3.0+ adds `MHD_FIRSTVOLUME` (`0x0100` in 2.x/3.x main header flags,

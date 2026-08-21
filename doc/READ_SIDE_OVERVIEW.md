@@ -501,6 +501,28 @@ volume-set flag. The first volume additionally has the
 `MHD_FIRSTVOLUME` flag (RAR 3.x/5.0 only; RAR 2.x readers must use
 filename conventions).
 
+### 8.1.1 Header encryption must not change across the set
+
+Record whether the first volume opened uses header encryption, and check
+every later volume against it. A set that switches between an
+encrypted-header volume and a plaintext one is not a valid set, and a
+reader that just carries on will extract whatever the substituted volume
+contains under the trust the user extended to the encrypted one.
+
+That is the attack: header encryption is what stops an onlooker seeing
+the file names, so an attacker who can replace a volume can drop
+arbitrary entries into the extraction of an archive the user believes is
+protected end to end. The volume is not the unit of trust; the set is.
+
+Measured by splicing a plaintext volume 2 into an encrypted-header
+six-volume set: RAR 7.12 and UnRAR 7.20 both abort with `ERROR: Bad
+archive enc.part2.rar` rather than extracting it.
+
+The reverse splice, an encrypted-header volume into a plaintext set,
+does not abort. RAR 7.12 prompts for a password for that volume, which
+is a decision handed to the user rather than a silent one. An encoder
+should still never produce either shape.
+
 ### 8.2 Continuation flags
 
 File headers on volume boundaries carry `LHD_SPLIT_BEFORE` (first
