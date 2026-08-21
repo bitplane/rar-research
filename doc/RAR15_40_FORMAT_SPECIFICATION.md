@@ -1609,6 +1609,20 @@ For flag value 3 (run-length):
   characters. Each character is copied directly from the ASCII fallback
   name: codepoint = `ASCII_name[dst_pos]`, high byte = `0x00`.
 
+  The reference decoder copies that byte through a signed `char` into a
+  wide character, so a fallback byte of `0x80` or above sign-extends: on
+  Windows `0xE0` lands as `U+FFE0`, not `U+00E0`. The branch is not
+  reachable from a WinRAR-written archive, because the encoder widens the
+  same way when it decides whether a byte can be copied, so a high-ASCII
+  byte never compares equal to its own character and the run stops short
+  of it. A RAR 3.93 archive of `café-über.txt` made here bears that out:
+  the only correcting-free run covers the leading `caf`, and every
+  non-ASCII character is emitted with flag 0 or 1 instead.
+
+  So this only matters for hand-made archives, and a decoder has to pick.
+  Treating the byte as unsigned gives the name the encoder meant;
+  sign-extending reproduces the reference byte for byte. Say which you do.
+
 The flag byte itself is consumed 2 bits at a time (MSB first), so one
 flag byte covers exactly 4 characters. A new flag byte is read each
 time `FlagBits == 0`.
