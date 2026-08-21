@@ -417,6 +417,35 @@ attrs (§8 of `RAR15_40_FORMAT_SPECIFICATION.md`). Typical values:
 `0x81A4` for a regular file with mode 0644, `0x41ED` for a directory
 with mode 0755.
 
+#### Cross-host extraction fallbacks
+
+When the archive's `Host OS` does not match the extraction host, the
+stored attribute bits are discarded and a default applies. The rules are
+the same as RAR 3.x, spelled out in
+`RAR15_40_FORMAT_SPECIFICATION.md` §6 under "Extraction fallbacks", and
+they are worth restating in one line each because RAR 5.0 encoders hit
+them just as often:
+
+| Situation | Result |
+|---|---|
+| Windows-attributed, extracted on Unix, directory | `0777 & ~umask` |
+| Windows-attributed, extracted on Unix, read-only file | `0444 & ~umask` |
+| Windows-attributed, extracted on Unix, other file | `0666 & ~umask` |
+| Unix-attributed, extracted on Windows, directory | `FILE_ATTRIBUTE_DIRECTORY` (`0x10`) |
+| Unix-attributed, extracted on Windows, other | `FILE_ATTRIBUTE_ARCHIVE` (`0x20`), plus `FILE_ATTRIBUTE_READONLY` if no write bits are set |
+| Unrecognised host value | The same defaults as the Windows-on-Unix rows: no attribute bit is honoured |
+
+Measured on Linux at umask 022, extracting one file with only the host
+and attribute fields changed: read-only Windows attributes gave 444 and
+plain ones 644, a Windows-attributed directory gave 755, and an
+unrecognised host value gave 644 even with the read-only bit set. A
+Unix-attributed file keeps its mode verbatim on Unix, including the
+execute bits, since no fallback applies.
+
+The practical consequence for an encoder: pick one `Host OS` and accept
+that the other host falls back. There is no attribute encoding that
+survives both.
+
 #### Directory signaling
 
 Unlike RAR 3.x, directories are detected via the `File Flags` bit
