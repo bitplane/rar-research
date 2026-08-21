@@ -291,9 +291,30 @@ would escape.
 
 ### 5.2 Symlink-chain detection: `LinksToDirs`
 
-Called before extracting any file once a symlink-with-`..` has been seen. Walks
-every component of the target path on disk, looking for a component that already
-exists and is a symlink.
+Called before extracting **every** file, from the first one, not only
+after a symlink-with-`..` has turned up in the archive. Walks every
+component of the target path on disk, looking for a component that
+already exists and is a symlink.
+
+The reason it cannot be gated on having seen a suspicious symlink is
+that the link need not come from *this* archive. Extract one archive
+that plants `link -> /somewhere/else`, then a second containing
+`link/payload.txt` into the same directory, and the second archive
+carries nothing suspicious at all: no symlink, no `..`, one perfectly
+ordinary file in a subdirectory. The trap was laid by the first run and
+sprung by the second.
+
+Measured on that exact pair. Both reference readers extract the second
+archive into a **real directory**, having replaced the planted symlink,
+and `payload.txt` stays inside the destination. Neither reports anything
+unusual; both say `All OK`.
+
+rars refuses the first archive instead, with `unsafe archive redirection
+target`, because the link points outside the extraction root (§5.3). The
+symlink is never created, so there is nothing to convert when the second
+archive arrives, and the payload lands in a real directory too. Same
+outcome by a stricter route, and it is worth knowing which of the two a
+given reader does.
 
 **It does not only detect.** The reference reader deletes the offending link,
 the symlink on Unix or the junction on Windows, and carries on so the extraction
