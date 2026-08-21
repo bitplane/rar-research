@@ -1085,6 +1085,32 @@ back a few bytes copies from the wrong place.
   When `numBits < 4` or align mode is inactive:
   - Read all `numBits` bits directly from the bitstream.
 
+**The high portion outgrows a 32-bit fetch in Unpack70.** With
+`numBits = (slot - 2) >> 1` and 80 slots, the top of the range works out
+as:
+
+| Slot | `numBits` | High field (`numBits - 4`) |
+|---|---|---|
+| 64 | 31 | 27 |
+| 66 | 32 | 28 |
+| 74 | 36 | 32 |
+| 79 | 38 | **34** |
+
+So from slot 75 up the high portion needs 33 or 34 bits and will not fit
+a `uint32`. A decoder built around a 32-bit peek truncates it silently
+and produces a distance that is wrong rather than an error. Use a 64-bit
+fetch for the high portion whenever `numBits > 36`, or simply always.
+
+Unpack50 never gets there: its 64 slots top out at `numBits = 31`, so a
+`uint32` covers every case.
+
+This follows from the slot formula and the 80-slot alphabet rather than
+from a measurement; see the "No oracle for algorithm 1" note in §11.10.
+Worth stating because the failure is silent. For the same reason a
+decoder that caps its bit reads at 32 should reject the oversized slot
+rather than truncate, which is what rars does: it refuses `numBits > 31`
+and so declines slots 66 and above instead of decoding them wrongly.
+
 | Slot | numBits | `dist_enc` | distance |
 |------|---------|------------|----------|
 | 0    | 0       | 0          | 1        |
