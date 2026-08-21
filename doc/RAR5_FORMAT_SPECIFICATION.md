@@ -622,6 +622,46 @@ typically emitted near the end of the archive (QO and RR must be
 locatable via the main-header locator extra record — see
 `MHEXTRA_LOCATOR` below).
 
+#### Two quirks in archives from WinRAR 5.21 and earlier
+
+Both are reader-side compensations. Neither should ever be emitted.
+
+**`FHEXTRA_SUBDATA` sizes are one byte short.** Those versions stored the
+record's size as one less than the payload they wrote. `SUBDATA` is the
+last record in a service header, so the shortfall always surfaces as
+exactly one byte left over after the record ends. Fold that byte back
+into the record. Dropping it costs an `RR` service its recovery percent
+and an `STM` service the last character of its stream name.
+
+Not to be confused with a general tolerance for trailing junk, which is
+separate and also required: a record that does not fit the extra area
+ends the record walk rather than failing the archive. RAR 7.12 and UnRAR
+7.20 extract normally from an extra area ending in a record claiming more
+bytes than remain, a size vint cut off by the end of the area, or a
+record too small to hold its own type vint.
+
+**`PswCheck` is all zeroes on some encrypted headers.** Those versions
+set `FHEXTRA_CRYPT_PSWCHECK` (flag `0x0001`) and then wrote eight zero
+bytes into the field. A reader that verifies it rejects the correct
+password. When the eight bytes are all zero, skip the explicit password
+check and let the data checksum decide.
+
+Measured by zeroing the field in a WinRAR 7.12 archive and fixing the
+header CRC32:
+
+| `PswCheck` | Correct password | Wrong password |
+|---|---|---|
+| genuine | `All OK` | `Incorrect password for s.txt` |
+| all zeroes | `All OK` | `Checksum error in the encrypted file s.txt` |
+
+The change in the wrong-password message is the evidence: with the field
+zeroed the explicit check no longer runs, and detection falls through to
+the data checksum. Zeroing the field's own trailing CRC32 or leaving it
+stale makes no difference, so the all-zero test happens first.
+
+Measured on a `HEAD_FILE`, so the compensation is not limited to service
+headers even though service headers are where these archives carry it.
+
 #### Extra Area records valid inside service headers
 
 Compatible readers parse the same extra-record types in both `HEAD_FILE`
