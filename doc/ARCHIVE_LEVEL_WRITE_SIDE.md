@@ -512,11 +512,42 @@ unambiguously. This lets decoders auto-detect volume 1 when given any
 volume. An encoder should always set it on volume 1 and never on other
 volumes. Legacy RAR 2.x archives lack this flag.
 
-**Without the flag, readers probe the content rather than trust the
-name.** Scan past the main header to the first file or service header
-and read its split-before flag: clear means this volume holds the start
-of a stream and is volume 1, set means it is a continuation. Then seek
-back and carry on normally.
+**RAR 5.0 has a second, simpler signal.** Continuation volumes carry the
+volume-number field, archive flag `0x0002`, and volume 1 does not.
+Measured across a six-volume RAR 7.12 set:
+
+| Volume | Archive flags | Volume-number field |
+|---|---|---|
+| `part1` | `0x1` | absent |
+| `part2`…`part6` | `0x3` | present, 1 through 5 |
+
+So for RAR 5.0 the question is answered by the main header alone and no
+probe is needed.
+
+**Without either marker, readers probe the content rather than trust the
+name.** Scan past the main header and read the split-before flag of the
+first block that has one: clear means this volume holds the start of a
+stream and is volume 1, set means it is a continuation. Then seek back
+and carry on normally.
+
+**Skip service headers while probing; only a file header answers the
+question.** A continuation volume can carry service blocks with
+split-before clear, and stopping at one reports volume 1 for a volume
+that is nothing of the sort. This is not hypothetical: in the six-volume
+set measured above, *every* volume including the continuations ends with
+an unsplit `QO` service, and volume 1 additionally carries an unsplit
+`CMT`:
+
+```
+part1:  MAIN, CMT(unsplit), FILE(split-after), QO(unsplit), ENDARC
+part2:  MAIN, FILE(split-before, split-after), QO(unsplit), ENDARC
+```
+
+Here the file header happens to come first in each continuation, so a
+naive probe survives. Nothing in the format guarantees that ordering,
+and the cost of getting it wrong is treating volume 4 as the start of
+the set. Walk past `HEAD_SERVICE` blocks until a `HEAD_FILE` or the
+end-of-archive header.
 
 The filename convention is a naming rule, not evidence. Measured by
 crossing the two signals on a RAR 3.93 old-style set:
