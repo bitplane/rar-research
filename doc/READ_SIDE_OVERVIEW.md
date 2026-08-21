@@ -189,19 +189,39 @@ reader to the next one.
 
 ### 3.2 Block-size accounting
 
-For RAR 1.5–4.x, the total block size is:
+Two different quantities get confused here, so keep them apart. The
+**header extent** is how many bytes the header itself occupies on disk.
+The **block extent** is header extent plus the data area, and it is what
+you add to reach the next block.
+
+For RAR 1.5–4.x:
 
 ```
-FullHeaderSize(HeadSize) =
-    HeadSize                                   # header only
-    + DataSize       if (HeadFlags & LHD_LONG_BLOCK)
+header_extent = HeadSize                                    # plaintext headers
+              = 8 + align16(HeadSize)                       # encrypted headers
+block_extent  = header_extent
+              + DataSize     if (HeadFlags & LHD_LONG_BLOCK)
 ```
 
 For RAR 5.0:
 
 ```
-FullHeaderSize = Header_Size + (Data_Size if DATA_PRESENT flag)
+header_extent = 4 + sizeof(HeadSize vint) + HeadSize        # plaintext
+              = 16 + align16(that)                          # encrypted headers
+block_extent  = header_extent
+              + Data_Size    if DATA_PRESENT flag
 ```
+
+**`HeadSize` describes the plaintext, so it is not the on-disk size when
+headers are encrypted.** The header is padded up to the cipher's 16-byte
+block, and the per-block salt (8 bytes in RAR 1.5–4.x) or IV (16 bytes in
+RAR 5.0) sits in front of it and is not counted by `HeadSize` either. A
+reader that advances by `HeadSize` on a header-encrypted archive lands
+mid-ciphertext and every block after the first is garbage. rars reads the
+8-byte salt and then `align16(HeadSize)` of ciphertext.
+
+The alignment padding is also outside the header CRC, which covers the
+unpadded plaintext (see `INTEGRITY_WRITE_SIDE.md` §8.2).
 
 A reader must honour both paths. An encoder can produce a header-only
 block (e.g. end-of-archive marker) or a header-plus-payload block
