@@ -204,8 +204,18 @@ for i = 0, k = 0; i < 38; i++:
     indx2units[i] = k
 ```
 
-This gives bucket sizes: 1, 2, 3, 4 (4 each), then 6, 8 (4 each), then 12,
-16, 20 (4 each), then groups of 4 up to 128 (26 buckets).
+Run that and the 38 bucket sizes come out as:
+
+| Buckets | Step | Unit sizes |
+|---|---|---|
+| 0–3 | 1 | 1, 2, 3, 4 |
+| 4–7 | 2 | 6, 8, 10, 12 |
+| 8–11 | 3 | 15, 18, 21, 24 |
+| 12–37 | 4 | 28, 32, 36, … 128 |
+
+Note the steps run 1, 2, 3, 4 rather than 1, 2, 4: the third group climbs
+by three, so it is 15, 18, 21, 24 and not 12, 16, 20. The largest bucket
+is 128 units.
 
 ### 4.3 Allocation flow (AllocUnits / AllocUnitsRare / SplitBlock)
 
@@ -1157,8 +1167,21 @@ return (Code - Low) / Range
 ```
 Low += start * Range
 Range *= size
-Normalize()
 ```
+
+**`Decode` does not normalize.** It is interval arithmetic and nothing
+else. Normalization is a separate step the caller runs at two specific
+points:
+
+- once per iteration of the escape loop, **before** descending to the
+  next shorter context, and
+- once after a symbol is decoded, **before** returning it.
+
+Folding the normalize into `Decode` pulls bytes out of the stream during
+escape evaluation, when the decoder has not yet committed to a symbol,
+and the reads land in the wrong order. The interval update and the byte
+refill are on different clocks: every `Decode` narrows, only some
+positions refill.
 
 **Binary decisions.** There is no `DecodeBit` in this coder. A binary context
 calls the same two operations with `total = PPMD_BIN_SCALE` (`1 << 14`) and a
@@ -1181,8 +1204,10 @@ if (Code - Low) < size0:
 else:
     Low  += size0
     Range = (Range & ~(PPMD_BIN_SCALE - 1)) - size0    # bit 1
-Normalize()
 ```
+
+Normalization follows on the same schedule as above, from the caller,
+not from inside the branch.
 
 The mask on the "1" branch is what `Range * (PPMD_BIN_SCALE - bs)` leaves after
 the shift, since `(Range >> 14) << 14` is `Range & ~(PPMD_BIN_SCALE - 1)`. Write
