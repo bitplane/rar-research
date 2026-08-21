@@ -129,7 +129,7 @@ Replace with `_`:
 | Case | Action |
 |------|--------|
 | `:` anywhere except position 1 | Replace with `_` (position 0–1 is a valid drive letter, already stripped in §3) |
-| `CON`, `AUX`, `NUL`, `PRN`, `COM1..9`, `LPT1..9` as a path component | Append a suffix (e.g. `CON_`) — reserved device names |
+| `CON`, `AUX`, `NUL`, `PRN`, `COM1..9`, `LPT1..9` as a path component, with or without an extension | Prepend an underscore to that component: `CON` becomes `_CON`, `dir/con.txt` becomes `dir/_con.txt`. Reserved device names. |
 | Trailing space or dot on a component | Strip — Windows silently drops these and the result may collide with a sibling |
 
 `MakeNameUsable` in compatible RAR reader covers the character replacement; reserved-
@@ -291,7 +291,7 @@ reject archives that produce a single component longer than 255 bytes
 ### 6.4 Collision handling
 
 Sanitization can make two different archive names map to the same destination:
-`AUX` and `AUX_`, `foo.txt.` and `foo.txt`, or two Unicode spellings that the
+`AUX` and `_AUX`, `foo.txt.` and `foo.txt`, or two Unicode spellings that the
 destination filesystem normalizes to the same name. A reader must detect this
 before writing. Safe policies are:
 
@@ -337,7 +337,7 @@ explicit flag plus confirmation.
 | Long path DoS | 50000-char single component | §6.3 reject |
 | UTF-8 bidi trick | `file.exe‮txt.cod` | §4.1 (filter controls U+202E et al.) |
 | TOCTOU symlink swap | replace `dir` with a symlink after validation | §6.2 race-safe creation |
-| Sanitized-name collision | `AUX` plus `AUX_` | §6.4 collision handling |
+| Sanitized-name collision | `AUX` plus `_AUX` | §6.4 collision handling |
 
 ## 9. Implementation checklist
 
