@@ -181,12 +181,44 @@ Replace with `_`:
 | Case | Action |
 |------|--------|
 | `:` anywhere except position 1 | Replace with `_` (position 0–1 is a valid drive letter, already stripped in §3) |
-| `CON`, `AUX`, `NUL`, `PRN`, `COM1..9`, `LPT1..9` as a path component, with or without an extension | Prepend an underscore to that component: `CON` becomes `_CON`, `dir/con.txt` becomes `dir/_con.txt`. Reserved device names. |
+| `CON`, `AUX`, `NUL`, `PRN`, `COM0..9`, `LPT0..9` as a path component | Prepend an underscore to that component: `CON` becomes `_CON`, `dir/con` becomes `dir/_con`. Reserved device names. |
 | Trailing space or dot on a component | Strip — Windows silently drops these and the result may collide with a sibling |
 
-`MakeNameUsable` in compatible RAR reader covers the character replacement; reserved-
-name handling is done at file-open time by the OS itself, but a
-defence-in-depth implementation should rename proactively.
+**The digit range starts at zero.** `COM0` and `LPT0` are device names
+too, and a reader sanitises them alongside `1..9`. Measured: `com0` and
+`lpt0` both come out as `_com0` and `_lpt0`.
+
+**The match is on the stem, and an extension does not exempt it — on
+Windows 10.** This is the one rule here that depends on the host OS
+version, and it flips:
+
+| Archived name | Extracted on Windows 10 | On Windows 11 |
+|---|---|---|
+| `aux` | `_aux` | `_aux` |
+| `con` | `_con` | `_con` |
+| `aux.txt` | `_aux.txt` | `aux.txt` |
+| `con.log` | `_con.log` | `con.log` |
+
+Windows 10 and earlier normalise `aux.txt` to the `AUX` device, so the
+rename is load-bearing there. Windows 11 does not, and a reader stops
+renaming the extension case. Bare device names are renamed on both.
+
+Measured by extracting the same archives twice from the same reader,
+changing only the Windows version the host reports (build 19043 versus
+22000) and holding everything else fixed.
+
+**For an implementation, rename in both cases.** The relaxation buys
+nothing except fidelity to whichever Windows the extraction happens on,
+and a name that survives extraction on Windows 11 can still be a
+problem for whatever opens it afterwards. Matching a reference reader
+byte-for-byte on this point means making the output depend on the host
+OS version, which is worth doing deliberately rather than by accident.
+
+The stem match is exact: `aux2` and `auxx` are not device names and pass
+through untouched on either version.
+
+Reserved-name handling is also done at file-open time by the OS itself,
+but a defence-in-depth implementation should rename proactively.
 
 ### 4.3 Unix-only
 

@@ -16,6 +16,11 @@ is valid and only the name is unusual.
 |---|---|---|
 | `traversal_dotdot.rar` | `../yy.txt` | §3 syntactic traversal |
 | `device_con.rar` | `con` | reserved stem, no extension |
+| `device_aux_bare.rar` | `aux` | bare device, renamed on every Windows |
+| `device_con_log.rar` | `con.log` | device + extension, renamed only pre-Windows 11 |
+| `device_com0.rar` | `com0` | digit range starts at zero |
+| `device_lpt0.rar` | `lpt0` | digit range starts at zero |
+| `device_prn.rar` | `prn` | the fifth bare device name |
 | `device_nul_dat.rar` | `nul.dat` | reserved stem with extension |
 | `device_com1.rar` | `com1` | numbered device |
 | `device_lpt9.rar` | `lpt9.a` | numbered device with extension |
@@ -42,6 +47,9 @@ Both extract into an empty directory with `x -y`.
 | `com1` | `_com1` | `com1` |
 | `lpt9.a` | `_lpt9.a` | `lpt9.a` |
 | `aux.txt` | `_aux.txt` | `aux.txt` |
+| `com0` | `_com0` | `com0` |
+| `lpt0` | `_lpt0` | `lpt0` |
+| `prn` | `_prn` | `prn` |
 | `d/aux.txt` | `d/_aux.txt` | `d/aux.txt` |
 | `aux2.txt` | `aux2.txt` | `aux2.txt` |
 | `auxx.txt` | `auxx.txt` | `auxx.txt` |
@@ -65,3 +73,22 @@ path.
 **`c_/x.txt` is inert everywhere**, which is the point of having it. It is a
 latent absolute path that only `-ep3` turns back into `c:\`, so a sanitizer
 scanning for `:` or a leading separator will not flag it.
+
+## The device-name rule depends on the reported Windows version
+
+The Windows column above is a prefix build 19043 (Windows 10). Point the same
+prefix at build 22000 and the extension case stops being renamed, while bare
+device names carry on being renamed:
+
+| Archived name | Windows 10 (19043) | Windows 11 (22000) |
+|---|---|---|
+| `aux` | `_aux` | `_aux` |
+| `con` | `_con` | `_con` |
+| `aux.txt` | `_aux.txt` | `aux.txt` |
+| `con.log` | `_con.log` | `con.log` |
+
+Same reader, same archives, one registry value changed. Windows 10 normalises
+`aux.txt` onto the `AUX` device and Windows 11 does not, so the rename is
+load-bearing on one and cosmetic on the other. An implementation matching this
+byte-for-byte makes its output depend on the host OS version; renaming in both
+cases is the safer default.
