@@ -2372,8 +2372,32 @@ if Distance >= 0x40000: Length += 1
 
 ### 16.10 Repeat Distance Buffer
 
-Four repeat distances (`OldDist[0..3]`), same semantics as RAR 2.9+.
-Circular pointer `OldDistPtr` advances modulo 4 on each new match.
+Four repeat distances (`OldDist[0..3]`) and a write cursor `OldDistPtr`,
+both masked to the range 0..3.
+
+The semantics are **not** the same as RAR 2.9+, and this is the easiest
+place in the format to carry the wrong model across. RAR 2.0 appends: on
+every match, repeat matches included, the distance lands at
+`OldDist[OldDistPtr]` and the cursor advances. Nothing is reordered, so
+a repeat selection re-enters the ring as a fresh entry and the oldest
+distance falls off. Selection reads backwards from the cursor, where
+symbol `256 + k` for `k` in 1..4 picks
+
+```
+Distance = OldDist[(OldDistPtr - k) & 3]
+```
+
+RAR 2.9 instead moves the selected entry to the front and adds no new
+one, so `OldDist[0]` is always the most recent distance. The two agree on
+the most recent distance and diverge on every other selection.
+
+Whether the buffer is a moving cursor or a shift register is an
+implementation choice: reading backwards from a cursor and reading
+forwards from a shift register give the same sequence. What matters is
+that RAR 2.0 appends where RAR 2.9 reorders.
+
+See §16.5 for the decode side and §16.11.5 for the matching encoder
+obligation.
 
 ### 16.11 Encoder (RAR 2.0 LZ compressor)
 
