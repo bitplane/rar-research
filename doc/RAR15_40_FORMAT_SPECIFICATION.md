@@ -3079,22 +3079,33 @@ if low == lastlowoffset and in_low_repeat_run:
     # do nothing — the repeat run already covers this
     numlowoffsetrepeats -= 1
 else:
-    if run_length_of(low) ≥ 2 starting here:
-        emit LowOffsetCode code for symbol 16   # "repeat last 15 times"
+    if run_length_of(low) ≥ 16 starting here:
+        emit LowOffsetCode code for symbol 16   # commits the next 16 matches
         numlowoffsetrepeats = 15
-        # subsequent identical lows consume the run for free
+        # the next 15 matches read no low symbol at all
     else:
         emit LowOffsetCode code for symbol low  # 0..15
         lastlowoffset = low
 ```
 
 The LowOffsetCode alphabet is 17 symbols: 0..15 are literal low-nibble
-values, and symbol 16 triggers "repeat previous low value 15 more times",
-where "previous" means `lastlowoffset`. The encoder should use symbol 16
-only when it actually has ≥ 2 upcoming matches sharing the same low nibble —
-otherwise the repeat-mode entropy gain is lost. Tracking the match finder's
-next N distances and their low-nibble distribution is a small but measurable
-win (typically 1–3% on binaries with aligned pointer patterns).
+values, and symbol 16 means `lastlowoffset` **for this match and the next
+fifteen**, sixteen in total.
+
+**It is a commitment, not a hint.** The current match takes
+`lastlowoffset` and the counter is set to 15; while that counter is
+positive the decoder reads no low symbol at all and forces
+`lastlowoffset` every time. An encoder that emits symbol 16 with only a
+short run in hand does not merely lose entropy, it silently rewrites the
+low nibble of the next fifteen matches and the file decodes wrong.
+
+So the trigger condition is a run of **at least 16** matches sharing the
+low nibble, all of them reaching this path (distance slot > 9). Tracking
+the match finder's next N distances and their low-nibble distribution is
+a small but measurable win where such runs exist, typically on binaries
+with aligned pointer patterns. Where they do not, emitting literal
+nibbles is correct and costs only the entropy. rars does exactly that:
+its decoder handles symbol 16, its encoder never emits one.
 
 **Edge case.** If `numlowoffsetrepeats > 0` when a new LowOffsetCode symbol
 would be emitted, the decoder does *not* read a symbol — it reuses
