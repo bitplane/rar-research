@@ -252,10 +252,10 @@ offset value, the encoder writes **zero** (a single `0x00` byte) to signal
 "unset" — decoders treat this as "Locator not usable for this block, fall
 back to a full walk".
 
-**Encoder rule.** Pre-allocate at least 5 bytes (enough for an offset up to
-2^35 ≈ 34 GB) for each offset field. Archives beyond that range are
-exceptional; for those, pre-allocate 10 bytes to cover the full 64-bit
-range. Under-reserving and falling back to zero is correct but defeats
+**Encoder rule.** Pre-allocate at least 5 bytes for each offset field. A
+vint byte carries 7 bits, so 5 bytes reach `2^35 - 1` = 34,359,738,367,
+which is one byte short of 32 GiB. Archives past that are exceptional; for
+those, pre-allocate 10 bytes, which covers the full 64-bit range. Under-reserving and falling back to zero is correct but defeats
 the point of the Locator record.
 
 ### Main header emit recipe
