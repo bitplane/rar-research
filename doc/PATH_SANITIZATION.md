@@ -86,7 +86,9 @@ while DestPos < len(S):
     if S[DestPos+1] is ':':
         DestPos += 2                # strip "C:"
     if S[DestPos] == S[DestPos+1] == '/':
-        skip to after second path-sep after the "//server/share" prefix
+        # Count two more separators and skip past the second one. This is
+        # what neutralises Win32 device namespaces as well as UNC roots.
+        skip to just after the second path-sep found at DestPos+2 or later
     skip any run of "/", "./", "../", ".../"
     if nothing was stripped: break
 ```
@@ -95,11 +97,21 @@ This handles:
 
 - `C:\foo\bar` → `foo\bar`
 - `\\server\share\foo` → `foo`
+- `\\?\C:\Windows\foo` → `Windows\foo`
+- `\??\C:\Windows\foo` → `Windows\foo`
 - `./foo` → `foo`
 - `../foo` (any leading `..` that survived step 1) → `foo`
 - `.\.\.\foo` → `foo`
 
 Looping until fixed-point catches layered attacks like `C:\..\C:\foo`.
+
+**Win32 device namespaces fall out of the same rule.** `\\?\C:\Windows\foo`
+and `\??\C:\Windows\foo` open with two separators, so the UNC branch takes
+them, and the count-two-more-separators walk lands after the drive component
+exactly as it would for a share name. A reader that instead matches the literal
+shape `//server/share` leaves the prefix in place, the path stays absolute, and
+the archive writes wherever it likes. Do not special-case the device prefixes.
+Do count separators rather than matching a pattern.
 
 ### 3.3 Post-conditions
 

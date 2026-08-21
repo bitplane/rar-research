@@ -859,11 +859,23 @@ procedure LongLZ():
 ```
 procedure CopyString(Distance, Length):
     DestUnpSize -= Length
-    while Length > 0:
-        Window[UnpPtr] = Window[(UnpPtr - Distance) & 0xFFFF]
-        UnpPtr = (UnpPtr + 1) & 0xFFFF
-        Length -= 1
+    // The window is never cleared, so a reference to a byte that was never
+    // written must not read it. See "Window contents on non-solid" in §12.
+    if (not FirstWinDone and Distance > UnpPtr) or Distance > 0x10000 or Distance == 0:
+        while Length > 0:
+            Window[UnpPtr] = 0
+            UnpPtr = (UnpPtr + 1) & 0xFFFF
+            Length -= 1
+    else:
+        while Length > 0:
+            Window[UnpPtr] = Window[(UnpPtr - Distance) & 0xFFFF]
+            UnpPtr = (UnpPtr + 1) & 0xFFFF
+            Length -= 1
 ```
+
+The test is made once for the whole copy: a run does not start on zeroes and
+cross into real bytes partway. `FirstWinDone` turns true the first time `UnpPtr`
+wraps the 64 KiB window, and it is part of the state a solid file inherits.
 
 ### 6.16 Encoder (RAR 1.3 / RAR 1.5 LZ compressor)
 
