@@ -392,12 +392,15 @@ suffix is case-sensitive.** Lowercase is binary, uppercase is decimal.
 | `g` / `G`, `t` / `T` | 1024³ / 1000³, 1024⁴ / 1000⁴ | same pattern |
 
 Measured by archiving one file at each setting and reading the first
-volume's size off disk. This is not a wire-format rule, but it decides
-where every split in the set lands, so a tool that reads `20K` as binary
-produces a volume set 2.4% off from the one the user asked for, and one
-that reads `-v1M` as binary is off by nearly 5%. A case-insensitive
-parser is a reasonable choice for a new tool; silently disagreeing with
-`rar` about the same string is not.
+volume's size off disk.
+
+This is CLI syntax, not a wire-format rule, and it is recorded here only
+because it is easy to trip over when reproducing a volume set from a
+command line. Any volume size is valid, so a tool that reads all
+suffixes as binary produces perfectly good archives that are simply cut
+at different offsets. rars does exactly that, deliberately. The only
+thing to avoid is quoting the same string in a script for two tools and
+assuming both cut in the same place.
 
 The algorithm:
 
