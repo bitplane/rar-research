@@ -696,10 +696,17 @@ procedure UpdateModel():
             // Adjust summ_freq for relative context sizes
             c.summ_freq += (2*ns1 < ns) + 2*((4*ns1 <= ns) & (c.summ_freq <= 8*ns1))
         else:
-            // Convert single-symbol to multi-symbol
+            // Convert single-symbol to multi-symbol. The doubling is
+            // discontinuous, not a capped double — see "MAX_FREQ rescale
+            // boundary behavior" below.
             allocate new stats array
-            copy old single state, double its freq (cap at MAX_FREQ - 4)
-            c.summ_freq = old_freq + init_esc + (ns > 3)
+            copy old single state
+            if old_freq < MAX_FREQ/4 - 1:      // < 30
+                new_freq = old_freq * 2
+            else:
+                new_freq = MAX_FREQ - 4        // 120
+            stats[0].freq = new_freq
+            c.summ_freq = new_freq + init_esc + (ns > 3)
 
         // Compute inherited frequency for the new symbol
         cf = 2 * found_state.freq * (c.summ_freq + 6)
