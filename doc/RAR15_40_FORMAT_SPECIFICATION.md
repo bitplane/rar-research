@@ -394,7 +394,7 @@ exact order — the decoder parses them positionally.
 | `0x0002` | FHD_SPLIT_AFTER  | File continued in next volume. |
 | `0x0004` | FHD_PASSWORD     | File is encrypted. |
 | `0x0008` | FHD_COMMENT      | File comment present. Not set by RAR 3.x+. |
-| `0x0010` | FHD_SOLID        | Information from previous files is used (solid compression). |
+| `0x0010` | FHD_SOLID        | Information from previous files is used (solid compression). Ignored for `UnpVer < 20`, where continuation follows archive-level `MHD_SOLID` and position instead; see below. |
 | `0x00E0` | (bits 5-7)       | Dictionary size. See below. |
 | `0x0100` | FHD_LARGE        | HIGH_PACK_SIZE and HIGH_UNP_SIZE fields are present. Used for files >2 GB. |
 | `0x0200` | FHD_UNICODE      | FILE_NAME contains Unicode data. See Section 13. |
@@ -403,6 +403,23 @@ exact order — the decoder parses them positionally.
 | `0x1000` | FHD_EXTTIME      | Extended time field is present. See Section 12. |
 | `0x2000` | FHD_EXTFLAGS     | Reserved for internal use. |
 | `0x8000` | (always set)     | ADD_SIZE present. Data area follows header. |
+
+**`FHD_SOLID` below `UnpVer` 20.** RAR 1.3, 1.4 and 1.5 predate a
+reader that consults this bit. For those members solid continuation
+follows the archive-level `MHD_SOLID` flag and position alone: the first
+member extracted starts a fresh 64 KB window and fresh adaptive Huffman
+state, and every later member continues from the previous one whatever
+its own flag says.
+
+Measured by clearing `FHD_SOLID` on the second member of a solid
+two-file archive and fixing up the header CRC. RAR 7.12, UnRAR 7.20 and
+rars all still extract it, which they can only do by carrying the window
+across, since that member is 44 packed bytes standing for 2700 unpacked.
+The same edit applied to a RAR 2.0 archive makes RAR 7.12 fail the member,
+so `UnpVer` 20 is where the flag starts being read.
+
+Encoders should still set the bit as usual. Writing it costs nothing and
+a reader that does look is then not misled.
 
 ### Dictionary Size (HEAD_FLAGS bits 5-7)
 

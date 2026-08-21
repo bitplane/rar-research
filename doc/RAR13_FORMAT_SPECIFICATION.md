@@ -1154,8 +1154,18 @@ recovery scenario where byte-identical re-emission is required.
 ### 6.17 Solid mode
 
 RAR 1.3 supports solid archives via `LHD_SOLID` (file entry flag `0x10`) and
-`MHD_SOLID` (archive flag `0x08`), identical in semantics to the same flags
-in RAR 1.5–4.x. The state that persists across a solid boundary is exactly
+`MHD_SOLID` (archive flag `0x08`). The state that persists is the same as in
+RAR 1.5, but **the reader does not consult the per-file flag**. Solid
+continuation follows the archive-level `MHD_SOLID` plus position: the first
+member extracted starts a fresh window and adaptive Huffman state, and every
+later member continues from the previous one.
+
+The bit is still written, so an encoder should set it as described below, but
+nothing reads it back. Measured by clearing `LHD_SOLID` on the second member
+of a solid two-file archive: RAR 7.12, UnRAR 7.20 and rars all still extract
+it, and they have to be continuing the window to do so, since that member is
+44 packed bytes standing for 2700. The same edit to a RAR 2.0 archive breaks
+extraction, so the flag starts mattering at `UnpVer` 20. The state that persists across a solid boundary is exactly
 what `Unpack15` carries:
 
 | State | Carries in solid | Resets per file (non-solid) |
