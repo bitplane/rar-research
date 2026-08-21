@@ -43,7 +43,29 @@ which `ReadHeaderXX` function feeds the walk.
 reading the first 7 bytes and checking them against the three forms.
 Byte 7 of the `Rar!` form distinguishes RAR 1.5–4.x (`0x00`) from
 RAR 5.0 (`0x01`); values `0x02..0x04` are reserved for a hypothetical
-future format and should be rejected.
+future format.
+
+**Rejecting those three is not the same as not recognising them**, and
+the difference is visible from outside. A reference reader treats
+`0x02..0x04` as a known-but-unsupported format: it stops there with
+"Unsupported archive format. Please update RAR to a newer version" and
+**does not fall through to the SFX scan** of §2.2. Byte 6 of `0x05` or
+above is not recognised at all, so the scan runs normally.
+
+Measured by prefixing a valid archive with a bogus 7-byte marker:
+
+| Byte 6 | Reference reader | rars |
+|---|---|---|
+| `0x02`–`0x04` | refuses, no scan, archive 71 bytes later never found | scans, finds it |
+| `0x05`+ | scans, finds the archive | scans, finds it |
+
+The consequence is worth stating plainly: a file beginning
+`Rar!\x1a\x07\x02` suppresses the SFX scan, so an archive embedded
+further in is invisible to a reader following the reference behaviour and
+visible to one that does not. Neither choice is wrong, but a tool whose
+job is to find every archive in a file and a tool that mirrors WinRAR
+will disagree about this file, and only one of them will extract what is
+inside it.
 
 The RAR 5.0 marker does not stop at that byte. An **eighth** byte, `0x00`,
 follows, so the whole marker block is 8 bytes and the first real header
