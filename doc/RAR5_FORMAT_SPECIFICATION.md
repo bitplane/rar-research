@@ -782,7 +782,7 @@ per cached header:
 
 | Field        | Type           | Description |
 |--------------|----------------|-------------|
-| CRC32        | uint32         | CRC32 (CRC50 variant) of the wrapper body that follows (Flags + Offset + HeaderSize + HeaderData). |
+| CRC32        | uint32         | CRC32 (CRC50 variant) of everything after this field: the `BlockSize` vint **and** the wrapper body (Flags + Offset + HeaderSize + HeaderData). `BlockSize` itself counts only the body, so the checksummed span is longer than the length it carries. See `ARCHIVE_LEVEL_WRITE_SIDE.md` §4.1. |
 | BlockSize    | vint           | Length of the wrapper body in bytes. Max encoding width 3 bytes. |
 | Flags        | vint           | Currently 0. |
 | Offset       | vint           | **Backward** delta from the start of this QO service header back to the cached header's archive position: `Offset = QOHeaderPos - cachedHeaderPos`. Offsets within the payload are monotonically *decreasing* in iteration order (cached headers appear in archive order, so they sit progressively further behind QO). |
