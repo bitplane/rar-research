@@ -378,8 +378,28 @@ both `SplitBefore` and `SplitAfter`, volume 3 with `SplitBefore`.
 
 ### 2.2 Split point selection
 
-The encoder picks where to cut based on a volume size budget. The
-algorithm:
+The encoder picks where to cut based on a volume size budget.
+
+**Where that budget comes from, if you take it off a command line: the
+suffix is case-sensitive.** Lowercase is binary, uppercase is decimal.
+
+| Suffix | Multiplier | `-v20…` gives |
+|---|---|---|
+| `k` | 1024 | 20,480 bytes |
+| `K` | 1000 | 20,000 bytes |
+| `m` | 1024² | 1,048,576 for `-v1m` |
+| `M` | 1000² | 1,000,000 for `-v1M` |
+| `g` / `G`, `t` / `T` | 1024³ / 1000³, 1024⁴ / 1000⁴ | same pattern |
+
+Measured by archiving one file at each setting and reading the first
+volume's size off disk. This is not a wire-format rule, but it decides
+where every split in the set lands, so a tool that reads `20K` as binary
+produces a volume set 2.4% off from the one the user asked for, and one
+that reads `-v1M` as binary is off by nearly 5%. A case-insensitive
+parser is a reasonable choice for a new tool; silently disagreeing with
+`rar` about the same string is not.
+
+The algorithm:
 
 ```
 for each source file to archive:
