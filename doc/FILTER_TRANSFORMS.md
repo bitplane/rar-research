@@ -408,7 +408,7 @@ def forward_audio(buf, channels):
             D2 = prev_delta - D1
             D1 = prev_delta
             predicted = (8*prev_byte + K1*D1 + K2*D2 + K3*D3) >> 3
-            predicted &= 0xFF
+            predicted &= 0xFF          # signed or unsigned shift, same answer
             cur_byte  = buf[i]
             out[i]    = (predicted - cur_byte) & 0xFF
             prev_delta = signed_byte(out[i] - prev_byte)  # reconstructed
@@ -435,6 +435,17 @@ def forward_audio(buf, channels):
                 elif num_min == 6 and K3 <  16:  K3 += 1
     return out
 ```
+
+### The shift is safe either way
+
+The sum can go negative, and `>>` means an arithmetic shift in some
+languages and a logical one in others. It makes no difference here. For a
+32-bit sum the two results differ by exactly `2^29`, which is a multiple of
+256, and `& 0xFF` throws that away. Python's arbitrary-precision `>>` lands
+on the same byte for the same reason. Take `-9`: `-9 >> 3` is `-2`, masking
+to `0xFE`, and `0xFFFFFFF7 >> 3` is `0x1FFFFFFE`, masking to `0xFE` as well.
+
+So write it in whichever form is natural. What you cannot drop is the mask.
 
 ### The state-symmetry trap
 
