@@ -546,8 +546,21 @@ table summarizes what each service carries, where:
 | `CMT`   | UTF-8 comment bytes; compressed or stored via normal `Compression Information`. | — | Reader scans for a `CMT` service header and decompresses the data area. |
 | `QO`    | Quick-open index (serialized file-header copies with offsets). See `ARCHIVE_LEVEL_WRITE_SIDE.md`. | — | Decoder reads data area via the main-header locator pointer (`MHEXTRA_LOCATOR_QLIST`). |
 | `ACL`   | NTFS `SECURITY_DESCRIPTOR` as bytes, attached to the **preceding** file entry. | — | Reader restores ACL metadata for the target file. |
-| `STM`   | Alternate-data-stream contents; stream name stored in the service header's `Name` field as `:StreamName:$DATA`. | — | Reader restores the named alternate stream. |
+| `STM`   | Alternate-data-stream contents. | Single-colon stream name, e.g. `:Zone.Identifier`. | Reader restores the named alternate stream. |
 | `RR`    | Reed-Solomon parity bytes (see `INTEGRITY_WRITE_SIDE.md`). | Single vint: recovery percent (1 byte through RAR 6.02, vint since 6.10). | Reader uses the main-header locator pointer (`MHEXTRA_LOCATOR_RR`) if present, else scans for the `RR` service. |
+
+**The `STM` stream name is not in the `Name` field.** Every RAR 5.0
+service header's `Name` is a fixed ASCII token identifying the service:
+`CMT`, `QO`, `ACL`, `STM`, `RR`. Measured on real archives, the ACL
+service header's name is the three bytes `ACL` and nothing else, and the
+Quick Open one is `QO`. The stream name travels in the `FHEXTRA_SUBDATA`
+(type `0x07`) record of the extra area instead.
+
+It carries a **single** colon: `:Zone.Identifier`, not
+`:Zone.Identifier:$DATA`. The `$DATA` suffix names the NTFS stream type
+and a reader must reject any name containing more than one colon, since
+`:name:$DATA` routes writes into the host file's main data stream rather
+than an alternate one. Emit the bare `:name` form; the type is implicit.
 
 ACL and STM are **per-file** metadata: the encoder must emit them
 immediately after the file they describe, and the file name in the
@@ -992,6 +1005,23 @@ This is stored as a lookup table:
 {0,0,0,0,0,0,0,1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3}
 ```
 
+**An equivalent form.** Three nested distance comparisons give the same
+answer for every representable distance:
+
+```
+bonus = (distance > 0x100) + (distance > 0x2000) + (distance > 0x40000)
+```
+
+The two agree exactly; the slot boundaries fall on those powers of two by
+construction. Implement whichever you prefer. rars uses the comparisons.
+
+**Only new matches get the bonus.** It applies to main symbols 262 and
+above. Repeat-distance matches (258-261) and the repeated-last match
+(257) decode their length straight from the length table and receive
+nothing, because their distance was already accounted for when it was
+first coded. Adding it there inflates every repeat match by 1 to 3
+bytes.
+
 ### 11.8 Repeat Distance Buffer
 
 Four repeat distances are maintained (`OldDist[0..3]`), initially set to the
@@ -1056,12 +1086,17 @@ for each block in the file (at encoder-chosen boundaries):
     1. run match finder over block_size input bytes → token stream
     2. count Main(306), Distance(64/80), Length(44), Align(16) frequencies
     3. build four Huffman tables via HUFFMAN_CONSTRUCTION §3, maxLen = 15
-    4. RLE-pack the concatenated lens[] against last-block baseline (§11.3)
+    4. RLE-pack the concatenated lens[] directly, as absolute lengths (§11.3)
     5. write block header (1 byte flags + 1 byte checksum + 1-3 size bytes)
     6. emit 20-symbol level Huffman (raw 4-bit lengths + RLE level codes)
     7. emit payload tokens as canonical codes
-    8. stash lens[] for next block's baseline
 ```
+
+Note step 4: the lengths are packed **as they are**. Unpack50 has no
+delta-against-the-previous-table step, so there is no baseline to
+subtract and nothing to carry into the next block. That mechanism
+belongs to RAR 2.0 and RAR 2.9, where a decoded level symbol is added to
+the previous table's entry modulo 16. Here the symbol is the length.
 
 Block size is an encoder choice bounded by the 24-bit stored byte-count field:
 at most `2^24 - 1` bytes of encoded payload. In practice 64–256 KB of *input*
@@ -1192,9 +1227,17 @@ The slot base is `(2 | (dist_slot & 1)) << numBits` where
 
 Then emit:
 
+There is no encoder-side choice here. Whenever `num_extras >= 4` the low
+four bits go through the Align table, always. "Align mode" in §11.6 is a
+*decoder* shortcut: when every Align length is 4 the canonical code maps
+symbol `i` to the 4-bit pattern `i`, so reading four raw bits gives the
+same answer and skips a Huffman lookup. It is not a mode the encoder can
+select, and emitting raw bits instead of Align codes produces a stream a
+reference decoder cannot read.
+
 ```
 emit Distance code for dist_slot
-if num_extras < 4 or align_mode_inactive:
+if num_extras < 4:
     emit raw bits(extras, num_extras)
 else:
     # Split into high-bits raw + low-4-bits via Align Huffman
@@ -1224,10 +1267,13 @@ otherwise the slot is off by 1–3.
 
 ```
 actual_len = match finder output
-numBits = distance_numBits(dist)
-encoder_len = actual_len - length_bonus[numBits]
+bonus = (dist > 0x100) + (dist > 0x2000) + (dist > 0x40000)
+encoder_len = actual_len - bonus        # only for new matches, slots 262+
 # proceed to encode encoder_len via §11.11.4
 ```
+
+For a repeat-distance match there is no bonus to subtract, so the length
+goes to §11.11.4 unchanged.
 
 Same-structure trap as RAR 2.0 §16.11.2 and RAR 3.x §18.8.4, but the bonus
 table is indexed by `numBits`, not by distance thresholds. Easy to miss
@@ -1542,7 +1588,7 @@ Sanity checks:
 
 - The minimal encoding of `0` is one byte (`0x00`); the 10-byte
   non-minimal encoding is `80 80 80 80 80 80 80 80 80 00`. Both decode
-  identically under `RawRead::GetV`.
+  identically under the shared vint reader.
 - For any value ≤ `2^((num_bytes-1)*7) - 1`, the last byte will be
   zero-extended by the high-bit groups above. For larger values, the
   last byte carries real payload. Both forms are legal on the wire as
