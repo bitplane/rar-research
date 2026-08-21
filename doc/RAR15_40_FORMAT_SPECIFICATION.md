@@ -2842,8 +2842,12 @@ all four main tables (404 symbols total). Level decoder symbols:
 | 18     | Set to zero. Count = `3 + read_bits(3)` (3-10 times). |
 | 19     | Set to zero. Count = `11 + read_bits(7)` (11-138 times). |
 
-Symbol 16 at position 0 (no previous length yet) is illegal — the decoder
-must reject the block. Maximum code length: 15 bits.
+Symbols 16 **and** 17 at position 0 are illegal, and the decoder must
+reject the block. Both repeat the previously decoded length, and at
+position 0 there is no previous length to repeat. Symbols 18 and 19 write
+zeros and carry no such dependency, so they are legal anywhere.
+
+Maximum code length: 15 bits.
 
 ### 18.3 LZ Match Decoding
 
