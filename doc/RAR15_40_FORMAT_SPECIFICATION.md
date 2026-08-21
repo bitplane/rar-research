@@ -3041,9 +3041,8 @@ The Main table's 299-symbol alphabet assigns:
 | Match / literal | Main symbol | Extra fields |
 |---|---|---|
 | Literal byte `b` | `b` (0..255) | — |
-| Filter trigger (inline VM) | 256 + bit `0` | VM bytecode (see Filters item) |
-| End of block | 256 + bit `1` + bit `new_table` | — |
-| Filter (alternate) | 257 | VM bytecode |
+| End of block | 256 + block structure bits | — (see §18.3) |
+| Filter trigger (inline VM) | 257 | VM bytecode (see Filters item) |
 | Last-length repeat | 258 | — |
 | Repeat distance `k` (k ∈ 0..3) | 259 + k | Length via Length table |
 | Short match (len 2) | 263..270 | Raw low distance bits |
@@ -3335,9 +3334,8 @@ output buffer.
 
 ### 20.2 Filter Parsing
 
-When a filter is triggered (symbol 257 in the main decode loop, or symbol 256
-followed by a zero bit in the alternate path), the filter record is read from
-the compressed data. The first byte is both a payload-length prefix and a flag
+When a filter is triggered (symbol 257 in the main decode loop), the filter
+record is read from the compressed data. The first byte is both a payload-length prefix and a flag
 byte:
 
 | Bits | Meaning |

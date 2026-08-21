@@ -541,9 +541,10 @@ on the decoded output before passing bytes to the user.
 
 ### RAR 3.x (RARVM bytecode, standard filters)
 
-See `RAR15_40_FORMAT_SPECIFICATION.md` §20. The encoder emits Main
-symbol 256 + bit 0 (filter follows) or Main symbol 257 (alt path), then a
-VM filter record. The record begins with one byte whose low 3 bits encode the
+See `RAR15_40_FORMAT_SPECIFICATION.md` §20. In an LZ block the encoder
+emits Main symbol 257, and only 257, then a VM filter record. Symbol 256
+is the block terminator and never introduces a filter; see §18.3. In a
+PPMd block the trigger is escape code 3 instead. The record begins with one byte whose low 3 bits encode the
 length of the following filter payload and whose high 5 bits are flags:
 
 - low 3 bits: payload length selector, per `RAR15_40_FORMAT_SPECIFICATION.md`
