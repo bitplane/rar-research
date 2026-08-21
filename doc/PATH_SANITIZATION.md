@@ -5,8 +5,11 @@ creating files on the host filesystem. Every rule here is a known
 attack vector; skipping any of them makes the extractor exploitable by
 a hostile archive.
 
-Canonical sources: a public RAR reader, `extinfo.cpp`, `filefn.cpp`,
-`ulinks.cpp`, `win32lnk.cpp`, `extract.cpp`.
+Oracles: `fixtures/paths/` holds fourteen archives, one hostile or
+borderline filename each, with a table of what `UnRAR.exe` 7.21 on
+Windows and `unrar` 7.20 on Linux actually produce from them. Anything
+in §3, §4 or §7 stated as behaviour was measured there. Where a claim
+was not measured, it says so.
 
 ## 1. Threat model
 
@@ -41,16 +44,24 @@ RAR stores filenames as the platform-native form of the creating OS:
 | OS/2, BeOS, macOS (pre-X) | `/` or `\` | Rare; treat as Unix-ish |
 
 Regardless of source, a conforming reader **must** normalize to the
-host separator internally (`UnixSlashToDos` at `pathfn.cpp:553-582`
-does this in compatible RAR reader) before applying any path-component logic.
+host separator internally before applying any path-component logic.
 Comparing `../` against `..\\` across OS boundaries is the #1 source
 of sanitizer bypasses.
 
 ## 3. ConvertPath — the path-level sanitizer
 
-Entry point: `ConvertPath` (`pathfn.cpp:40-88`). Applied to every
-filename from a file header before any filesystem operation. The
-algorithm:
+Applied to every filename from a file header before any filesystem
+operation.
+
+**Measured** (`fixtures/paths/traversal_dotdot.rar`, stored name
+`../yy.txt`): both `rar712` and `unrar 7.20` list the name unchanged,
+then extract it to `./yy.txt` inside the destination. They sanitise and
+carry on, reporting `All OK`. rars refuses the entry instead, with
+`unsafe archive path`, and writes nothing. Both are safe; the difference
+is whether a hostile entry is dropped or silently renamed. Say which
+yours does.
+
+The algorithm:
 
 ### 3.1 Step 1 — strip everything up to the last `/../`
 
@@ -133,8 +144,27 @@ issues — see §4.
 
 ## 4. MakeNameUsable — character-level sanitizer
 
-Entry point: `MakeNameUsable` (`pathfn.cpp:514-550`). Applied per
-character after `ConvertPath`.
+Applied per character after `ConvertPath`, and **only on Windows**. Every
+rule in this section is a no-op on a Linux extractor: `unrar 7.20` writes
+`a:b.txt`, `a*b.txt`, `a\b.txt`, `aux.txt` and `tail. ` out verbatim.
+Running these rules unconditionally renames files nobody asked to rename.
+
+Measured on Windows, via `UnRAR.exe` 7.21 under wine:
+
+| Stored name | Extracted as |
+|---|---|
+| `a:b.txt` | `a_b.txt` |
+| `a*b.txt` | `a_b.txt` |
+| `a\b.txt` | `a_b.txt` |
+| `tail. ` (trailing space) | `tail._` |
+| `aux.txt` | `_aux.txt` |
+| `d/aux.txt` | `d/_aux.txt` |
+| `aux2.txt` | `aux2.txt` |
+| `auxx.txt` | `auxx.txt` |
+
+The device-name rule is an **exact match on the stem** before the first
+dot, and the underscore prefixes the **component** rather than the path.
+`aux2` and `auxx` are not reserved and pass through untouched.
 
 ### 4.1 Always-forbidden characters
 
@@ -163,8 +193,7 @@ defence-in-depth implementation should rename proactively.
 No character is truly forbidden except NUL and `/`. But an extractor
 should still apply the Windows rules if the destination is a
 network share mounted from Windows, because the file creation will
-fail otherwise — `MakeNameUsable(Name, Extended=true)` enables the
-stricter mode (`pathfn.cpp:518, 526`).
+fail otherwise. That is what the "extended" mode in §4.5 is for.
 
 ### 4.4 Unicode normalization across hosts
 
@@ -187,9 +216,8 @@ normalizer is not one you control.
 
 `MakeNameUsable` takes an `Extended` parameter (`bool`). In non-
 extended mode it only strips `?` and `*`. In extended mode it adds
-the full reserved set. compatible RAR reader enables extended mode only after a
-filesystem error suggests the destination doesn't tolerate the
-name (`pathfn.cpp:521-544`).
+the full reserved set. Readers typically enable extended mode only after
+a filesystem error suggests the destination will not tolerate the name.
 
 A security-focused reader should always run in extended mode: the
 "native Unix drive" fast path that compatible RAR reader favours for performance can
@@ -204,8 +232,7 @@ stripped every `..`.
 
 ### 5.1 Relative-target validation: `IsRelativeSymlinkSafe`
 
-Entry point: `extinfo.cpp:107-155`. Called before creating any
-symlink:
+Called before creating any symlink:
 
 ```
 inputs:
@@ -266,7 +293,7 @@ implementation can do the same.
 
 ### 5.3 Absolute and UNC targets: always reject
 
-`IsFullRootPath` (`pathfn.cpp:695-698`) returns true for:
+A full-root-path test returns true for:
 
 - Windows drive-letter paths (`C:\foo`)
 - Windows UNC (`\\server\share\foo`)
@@ -289,7 +316,7 @@ Apply the same safety checks to all three:
 
 - **Symlinks**: §5.1–§5.3 above.
 - **Junctions**: target is always absolute — reject unless the user
-  opts in (`win32lnk.cpp:67-69` gates on `IsRelativeSymlinkSafe`).
+  opts in, gated on the same relative-target test as §5.1.
 - **Hardlinks**: target is a sibling file already in the archive.
   Validate the target has already been extracted and lives inside
   `ExtrPath`; never create a hardlink to anything outside the root.
@@ -400,19 +427,36 @@ runs *first* on an archive they do not trust.
 
 ## 7. `-ep` switch modes (compatible RAR reader CLI behaviour)
 
-compatible RAR reader exposes four path-handling modes via `-ep` (`options.hpp:12-15`):
+There are **five** modes, not four. Names below are what each stores
+when archiving; the effects were measured with `rar712` on Linux and
+`Rar.exe` 7.21 under wine, archiving `c:\eptest\sub\f.txt` or the
+equivalent relative tree.
 
-| Mode | Switch | Effect |
-|------|--------|--------|
-| `EXCL_SKIPWHOLEPATH` | `-ep` | Discard the entire path — extract to flat `ExtrPath/filename`. |
-| `EXCL_BASEPATH` | `-ep1` (default for create) | Strip the base path component. |
-| `EXCL_SAVEFULLPATH` | `-ep2` | Keep the full path without the drive letter. |
-| `EXCL_ABSPATH` | `-ep3` | Keep the absolute path including the drive letter — **only valid with `x` (extract with full paths) on Windows** (`extract.cpp:1244`). |
+| Switch | Stores | Notes |
+|---|---|---|
+| *(none)* | the path exactly as typed on the command line | Relative argument stays relative; absolute argument is stored absolute, minus the leading separator. **This is the default, not `-ep1`.** |
+| `-ep` | `f.txt` | Whole path discarded, flat names. |
+| `-ep1` | `base/sub/deep/f.txt` | Drops the directory named on the command line. A no-op when the argument is already relative to the cwd. Ignored if the argument has wildcards. |
+| `-ep2` | `eptest/sub/f.txt` | Expands to the full path, minus drive letter and leading separator. |
+| `-ep3` | `c_/eptest/sub/f.txt` | Expands to the full path **including the drive**, with the colon replaced by `_`. Windows only. WinRAR's manual adds that UNC `\\server\share` becomes `__server\share`; not measured here. |
+| `-ep4<path>` | `sub/deep/f.txt` for `-ep4base/` | Strips a given prefix, compared against the name already prepared for storage. |
 
-`-ep3` is the one security-relevant mode: it deliberately allows
-archived absolute paths. A writer making the choice for users should
-default to `-ep1` (the compatible RAR reader default) and make `-ep3` require an
-explicit flag plus confirmation.
+`-ep2` is listed in neither `rar712 -?` nor `unrar -?`, but both accept
+it. `-ep4` is listed in both and was missing from this table entirely.
+
+**The security-relevant part is the `-ep3` substitution.** Extracting
+with `-ep3` turns `c_` back into `c:` and `__server` back into
+`\\server`, and ignores any destination the user gave. So an entry named
+`c_/windows/system32/x.dll` is completely inert under a normal extract
+and becomes an absolute write the moment someone passes `-ep3`.
+
+`fixtures/paths/latent_drive_underscore.rar` carries exactly that shape.
+Both readers extract it to a literal `c_/x.txt` directory under the
+destination, on Windows and on Linux, with no warning of any kind. A
+sanitizer that looks for `:` or a leading separator will not see it.
+
+A writer choosing for users should leave the default alone and make
+`-ep3` require an explicit flag plus confirmation.
 
 ## 8. Attack scenarios and required mitigations
 
