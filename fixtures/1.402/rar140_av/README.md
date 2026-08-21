@@ -64,7 +64,6 @@ cp research/re/rar140/logs/AV.RAR      fixtures/1.402/rar140_av/rar140_av_patche
   reader behaviour; not byte-identical to a wild registered
   archive.
 - The `RE~^` marker, MHD_AV-on-main-header, and 6-byte fixed
-  prefix `1a 69 6d 02 da ae` are observed-stable across runs and
-  match what `_refs/unrar/` identifies as RAR 1.4 format
-  (verified: `unrar v rar140_av_patched.rar` reports
-  `Details: RAR 1.4`).
+  prefix `1a 69 6d 02 da ae` are observed-stable across runs, and a
+  reference reader agrees on the format: `unrar v rar140_av_patched.rar`
+  reports `Details: RAR 1.4`.

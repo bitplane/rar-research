@@ -8,18 +8,20 @@ end-to-end against `fixtures/1.402/COMMENT.RAR`:
      `MHD_PACK_COMMENT (0x10)` flags.
   2. Read `CmtLength` and `UnpCmtLength` from the main-header extension.
   3. Decrypt the `CmtLength - 2` packed bytes with the fixed RAR 1.3
-     comment key `[0, 7, 77]` (Decrypt13 from `_refs/unrar/crypt1.cpp`).
-  4. Hand the decrypted Unpack15 stream off to `_refs/unrar/unrar` for
-     extraction and assert the output equals the expected text.
+     comment key `[0, 7, 77]` (§7.3).
+  4. Hand the original archive to a reference RAR binary and assert the
+     comment it prints equals the expected text.
 
-Step 4 uses the original archive (modern UnRAR follows the same procedure
-internally per `arccmt.cpp`); this script's value is asserting steps 1-3
-match byte-for-byte and emitting the decrypted intermediate as a test
-vector for clean-room implementations.
+Step 4 is a cross-check: a reference reader runs the same procedure
+internally, so agreement on the final text confirms steps 1-3 landed on
+the right bytes. This script's value is asserting steps 1-3 match
+byte-for-byte and emitting the decrypted intermediate as a test vector
+for clean-room implementations.
 """
 
 from __future__ import annotations
 
+import shutil
 import struct
 import subprocess
 import sys
@@ -28,7 +30,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / "fixtures/1.402/COMMENT.RAR"
-UNRAR = ROOT / "_refs/unrar/unrar"
+def _find_reference_reader() -> str | None:
+    """A distributed RAR binary that can print an archive comment."""
+    for candidate in (
+        ROOT / "_refs/rarbins/rar712-linux-x64",
+        ROOT / "_refs/rarbins/rar393-linux-x64",
+    ):
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("unrar") or shutil.which("rar")
+
+
+UNRAR = _find_reference_reader()
 
 EXPECTED_TEXT = b"This is the archive comment.\r\n"
 
@@ -95,12 +108,12 @@ def main() -> int:
         return 1
     print(f"ok: Decrypt13([0,7,77]) -> {decrypted.hex()}")
 
-    if not UNRAR.exists():
-        print(f"skip: {UNRAR} not present, cannot verify Unpack15 round-trip")
+    if UNRAR is None:
+        print("skip: no reference RAR binary found, cannot verify Unpack15 round-trip")
         return 0
 
     result = subprocess.run(
-        [str(UNRAR), "lc", str(ARCHIVE)],
+        [UNRAR, "lc", str(ARCHIVE)],
         capture_output=True,
         text=True,
         check=False,

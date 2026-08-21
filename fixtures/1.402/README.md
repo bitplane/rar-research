@@ -62,9 +62,8 @@ compressed and password-protected variants.
 
 ## Coverage gaps not generated
 
-- **StMode trigger**: requires a specific Huffman-decode burst pattern
-  (`NumHuf >= 16` per `unpack15.cpp:373`); not deterministically producible
-  from input data alone.
+- **StMode trigger**: requires a specific Huffman-decode burst pattern,
+  `NumHuf >= 16`; not deterministically producible from input data alone.
 ## SHA-256
 
 Current committed fixture hashes:
