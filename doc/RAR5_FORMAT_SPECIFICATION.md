@@ -628,6 +628,27 @@ nonsensical archive: services are not extracted as filesystem links.
 For split files (except last part): hash of packed data in current volume.
 For non-split files and last parts: hash of unpacked data.
 
+**A BLAKE2sp record outranks the header's `Data CRC32`.** A file header
+can carry both, since `FHFL_CRC32` (file flag `0x0004`) and this record
+are independent. When it does, the hash is the authoritative check and
+the CRC32 beside it is **not** evaluated during extraction. It stays
+available for listings and quick checksum queries.
+
+Measured on RAR 7.12 and UnRAR 7.20 with both fields present on one
+header:
+
+| `Data CRC32` | BLAKE2sp | result |
+|---|---|---|
+| correct | correct | extracts |
+| **wrong** | correct | extracts, both readers |
+| correct | **corrupted** | rejected, both readers |
+
+So the precedence is real rather than a side effect of the hash being
+checked first: a wrong CRC32 is ignored outright, while a wrong hash
+still fails. WinRAR writes one field or the other and never both, so this
+only comes up with archives from elsewhere. Encoders should follow suit
+and write one.
+
 #### File Time Record (type 0x03)
 
 | Field             | Type            | Present when |
