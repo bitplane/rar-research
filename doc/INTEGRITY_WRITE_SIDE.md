@@ -979,19 +979,11 @@ References: public reader behavior for the CRC helpers and CRC call sites.
 
 ### 8.1 RAR 2.x — `GetCRC15` (CRC16)
 
-```c
-uint RawRead::GetCRC15(bool ProcessedOnly) {
-    if (DataSize <= 2) return 0;
-    uint HeaderCRC = CRC32(0xffffffff, &Data[2],
-                           (ProcessedOnly ? ReadPos : DataSize) - 2);
-    return ~HeaderCRC & 0xffff;
-}
-```
-
-Despite the name "CRC16," the algorithm is **CRC32 with the top 16 bits
-discarded**. The encoder computes a normal CRC32 and stores only the
-low 16 bits (as `~crc & 0xFFFF`, equivalent to inverting at the end and
-masking).
+Despite the name "CRC16", the algorithm is **CRC32 with the top 16 bits
+discarded**. Run a standard CRC32 over the range below and store its low
+16 bits, `crc & 0xFFFF`. There is no extra inversion here: the final XOR
+is already part of CRC32, so a reference formulation written as
+`~crc & 0xFFFF` is inverting a raw register, not a finished checksum.
 
 **CRC range:** bytes `[2, end)` where `end` is one of:
 
@@ -1056,13 +1048,6 @@ record instead of `HEAD3_OLDSERVICE` for Unix ownership metadata and
 avoid this wart entirely.
 
 ### 8.2 RAR 5.0 — `GetCRC50` (CRC32)
-
-```c
-uint RawRead::GetCRC50() {
-    if (DataSize <= 4) return 0xffffffff;
-    return CRC32(0xffffffff, &Data[4], DataSize-4) ^ 0xffffffff;
-}
-```
 
 Standard CRC32 (IEEE 802.3 polynomial `0xEDB88320`, initial value
 `0xFFFFFFFF`, final XOR `0xFFFFFFFF`) — same algorithm as file-data CRC.
