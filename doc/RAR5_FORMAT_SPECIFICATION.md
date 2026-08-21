@@ -1382,12 +1382,32 @@ def select_algo_version(file):
 # Dictionary size (v1) = (128 KB << power) + (128 KB << power) * fraction / 32
 base_power = floor(log2(dict_size / 128 KB))          # bits 10–14
 base_size  = 128 KB << base_power
-fraction   = round((dict_size - base_size) * 32 / base_size)   # bits 15–19
+fraction   = (dict_size - base_size) // (base_size // 32)       # bits 15–19
 assert 0 <= fraction <= 31
 
 # v0 archives MUST emit fraction = 0 and power ≤ 15.
 # v1 archives MAY emit any (power, fraction) pair with power ≤ 23.
 ```
+
+**Truncate, do not round.** Rounding to nearest overflows the field: for
+any size in the top half-step below the next power of two, `round` gives
+`32`, which does not fit five bits and carries into bit 20, the
+RAR5-compat flag. One byte under 256 KiB is enough to trigger it. Across
+a sweep of every step boundary from 128 KiB to 1 TiB, rounding produced
+`fraction = 32` at 24 sizes and a dictionary *larger than requested* at
+768 more. Truncation gives `31` at those sizes and never exceeds the
+request.
+
+The assertion above is not decoration. It fires on the rounding form.
+
+The declared dictionary is a ceiling the decoder allocates to, so
+overshooting is not a rounding nicety, it asks the reader for memory the
+writer was not given permission to demand.
+
+A third option is to refuse: require the requested size to land exactly
+on a `(power, fraction)` pair and error otherwise. That is what rars
+does, which is why its dictionary sizes are always exactly what was
+asked for.
 
 The v0 decoder interprets bits 15–19 as reserved zero; an encoder
 targeting v0 readers must not set them.
