@@ -1133,14 +1133,12 @@ signature search the decoder does.
 
 ### 5.6.2 Maximum stub size
 
-```
-#define MAXSFXSIZE 0x400000    // 4 MiB  (rardefs.hpp:24)
-```
-
-The decoder reads `MAXSFXSIZE - 16` bytes from the start of the file
-and scans for a signature. **A stub larger than 4 MiB causes the
-archive body to be unreachable** — the decoder will report "not a RAR
-archive" because its scan window doesn't extend that far.
+The signature scan window is 4 MiB (`0x400000`). The decoder reads that
+many bytes less 16 from the start of the file and scans them for a
+signature. **A stub larger than 4 MiB causes the archive body to be
+unreachable** — the decoder reports "not a RAR archive" because its scan
+window doesn't reach that far. Readers are free to scan further, and some
+do, so do not treat a successful extraction as proof the stub is portable.
 
 Practical stubs from WinRAR are 100–300 KiB (Default.SFX, Zip.SFX,
 WinCon.SFX). A clean-room encoder that ships its own stub should stay
