@@ -411,15 +411,15 @@ def forward_audio(buf, channels):
             predicted &= 0xFF          # signed or unsigned shift, same answer
             cur_byte  = buf[i]
             out[i]    = (predicted - cur_byte) & 0xFF
-            prev_delta = signed_byte(out[i] - prev_byte)  # reconstructed
-            prev_byte  = out[i]
-            # coefficient adaptation (same as decoder, lines 290-325)
-            D = signed_byte(cur_byte) << 3
+            prev_delta = signed_byte(cur_byte - prev_byte)
+            prev_byte  = cur_byte          # the byte the decoder will rebuild
+            # Coefficient adaptation. D comes from the residual, which is
+            # what the decoder has in hand at this point.
+            D = signed_byte(out[i]) << 3
             dif[0] += abs(D)
             dif[1] += abs(D - D1); dif[2] += abs(D + D1)
             dif[3] += abs(D - D2); dif[4] += abs(D + D2)
             dif[5] += abs(D - D3); dif[6] += abs(D + D3)
-            byte_count += 1
             if byte_count & 0x1F == 0:
                 min_dif = dif[0]; num_min = 0; dif[0] = 0
                 for j in range(1, 7):
@@ -433,8 +433,14 @@ def forward_audio(buf, channels):
                 elif num_min == 4 and K2 <  16:  K2 += 1
                 elif num_min == 5 and K3 >= -16: K3 -= 1
                 elif num_min == 6 and K3 <  16:  K3 += 1
+            byte_count += 1
     return out
 ```
+
+`byte_count` is tested before it is incremented, so the first adaptation
+runs after the first sample of a channel and then every 32nd. Increment
+first and every adaptation lands one sample late, which drifts the
+coefficients apart from the decoder's within the first block.
 
 ### The shift is safe either way
 
@@ -449,17 +455,18 @@ So write it in whichever form is natural. What you cannot drop is the mask.
 
 ### The state-symmetry trap
 
-Note the critical line `prev_byte = out[i]` — the encoder must use the
-*residual* (out[i]), **not** the input byte `buf[i]`, because the decoder's
-state machine operates on its reconstructed output. Get this wrong and the
-decoder will drift within the first few samples and destroy the file.
+Two values are in play at each sample and they go to different places.
 
-This is *opposite* to the RGB filter trap in §7, where the encoder must
-use `buf[i]` because the RGB predictor operates on the original byte. The
-difference: RGB's predictor is a Paeth-like function of neighbors, so it
-must be fed the value that will be visible after reverse; audio's
-predictor is a linear filter on the *delta history*, which the decoder
-builds from its own output.
+- The **predictor** state (`prev_byte`, `prev_delta`) takes the original
+  byte, because the decoder reconstructs that byte and feeds its own
+  predictor with it.
+- The **coefficient adaptation** term `D` takes the residual, because
+  that is the byte the decoder reads from the stream at that point.
+
+Swap them and the decoder drifts within the first few samples. The rule is
+the same one as the RGB filter in §7: whatever the decoder has computed at
+a given step is what the encoder must feed the matching part of its own
+state.
 
 ---
 
