@@ -865,7 +865,19 @@ An encoder must never emit one: carry into the seconds field instead.
 | User ID           | vint | If `0x0004`. |
 | Group ID          | vint | If `0x0008`. |
 
-#### Service Data Record (type 0x07)
+**Both name lengths are clamped to 255 bytes on read.** The lengths are
+vints, so the field can claim far more than any account name needs, and a
+reader that allocates on the claimed value hands an attacker a
+size-of-my-choosing allocation from a few header bytes. Cap the read at
+255 and discard the rest.
+
+Measured on RAR 7.12 by patching the record and listing with `lt`, which
+prints the owner: a 255-byte user name comes back in full, and a 300-byte
+one comes back as exactly 255 bytes.
+
+Encoders must keep both names at 255 bytes or shorter. Anything longer is
+silently truncated by readers, so the archive would restore ownership to
+a different name than the one intended.
 
 | Field | Type | Description |
 |-------|------|-------------|
