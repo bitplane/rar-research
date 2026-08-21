@@ -217,11 +217,23 @@ Encoder flow:
 1. Build `lens[]` for the main tables via §3.
 2. Compute the edit-distance–style encoding (each length is encoded as the
    *delta* from the previous length, modulo 16).
-3. Emit runs of deltas, using the level-table alphabet symbols 0–15 (literal
-   deltas), 16 (repeat previous), 17–18 (run of zeros).
+3. Emit runs of deltas, using the level-table alphabet:
+
+   | Symbol | Meaning | Extra bits | Range |
+   |---|---|---|---|
+   | 0–15 | Literal delta, added modulo 16 | — | — |
+   | 16 | Repeat previous length | 2 | 3–6 |
+   | 17 | Run of zeros | 3 | 3–10 |
+   | 18 | Run of zeros | 11 + `read_bits(7)` | 11–138 |
+
+   These bit counts are **not** the ones in §5.3. RAR 2.0's symbol 16
+   takes 2 extra bits where RAR 2.9 and RAR 5.0 give theirs 3, and there
+   is no symbol 19 at all: the alphabet stops at 18. Reusing the later
+   table here desyncs the level decoder on the first repeat run.
 4. Count level-symbol frequencies, build a Huffman over the 19 level symbols
-   via §3 at `maxLen = 15`, but emit the level-table lengths as raw 4-bit
-   fields (no recursive level table).
+   via §3 at `maxLen = 15`, but emit the level-table lengths as 19 raw 4-bit
+   fields. There is no recursive level table and no run-length escape in the
+   preamble; that arrived with RAR 2.9.
 
 ### 5.2 RAR 2.9 / 3.x / 4.x (Unpack29)
 
