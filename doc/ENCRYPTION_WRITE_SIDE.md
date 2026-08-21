@@ -133,9 +133,14 @@ RAR 1.3. Do not use for anything real.
 
 32-round Feistel-style block cipher on 16-byte blocks. State carried
 across blocks: four 32-bit key words `Key20[0..3]` and a 256-byte
-substitution table `SubstTable20[]`. Verified against
-`_refs/unrar/crypt2.cpp` (`SetKey20`, `EncryptBlock20`,
-`DecryptBlock20`, `UpdKeys20`, `Swap20`).
+substitution table `SubstTable20[]`.
+
+**Oracle for this whole section:** `fixtures/2.02/rar202-comment-psw.rar`,
+password `password`. It holds `FILE1.TXT` and `FILE2.TXT`, contents
+`file1\r\n` and `file2\r\n`, each packed to 32 bytes so each member is
+two cipher blocks. Key state carries across blocks, so a wrong constant,
+a wrong round or a wrong key update turns the second block to noise and
+the CRC fails. Both members extracting intact exercises every rule below.
 
 ### 3.1 Initial key constants
 
@@ -143,13 +148,35 @@ substitution table `SubstTable20[]`. Verified against
 Key20 = [0xD3A3B879, 0x3F6D12F7, 0x7515A235, 0xA4E7F123]
 ```
 
-Reset to these four hardcoded values at every `SetKey20` call (i.e.,
-once per archive open). Verified at `crypt2.cpp:30-33`.
+Reset to these four values at the start of every key setup, which is
+once per archive open.
 
 ### 3.2 SubstTable20 initial contents
 
-The 256-byte permutation `InitSubstTable20[]` is reproduced in full at
-`crypt2.cpp:9-26`. Encoder/decoder must use the same array verbatim.
+A fixed permutation of `0x00..0xFF`, read row-major, 16 bytes per row:
+
+```text
+D7 13 95 23 49 C5 C0 CD F9 1C 10 77 30 DD 02 2A
+E8 01 B1 E9 0E 58 DB 19 DF C3 F4 5A 57 EF 99 89
+FF C7 93 46 5C 42 F6 0D D8 28 3E 1D D9 E6 56 06
+47 18 AB C4 65 71 DA 7B 5D 5B A3 B2 CA 43 2C EB
+6B FA 4B EA 31 A7 7D D3 53 72 9D 90 20 C1 8F 24
+9E 7C F7 BB 59 D6 8D 2F 79 E4 3D 82 D5 C2 AE FB
+61 6E 36 E5 73 39 98 5E 69 F3 D4 37 D1 F5 3F 0B
+A4 C8 1F 9C 51 B0 E3 15 4C 63 8B BC 7F 11 F8 33
+CF 78 BD D2 08 E2 29 48 B7 CB 87 A5 A6 3C 62 07
+7A 26 9B AA 45 AC FC EE 27 86 3B 80 EC 1B F0 50
+83 03 55 CE 91 4F 9A 8E 9F DC C9 85 4A 40 14 81
+E0 B9 8A 67 AD B6 2B 22 FE 52 C6 97 E7 B4 3A 0A
+76 1A 66 0C 32 84 16 BF 88 6F A2 B3 2D 04 94 6C
+A1 38 4E 7E F2 DE 0F AF 92 17 21 F1 B5 BE 4D E1
+00 2E A9 BA 44 5F ED 41 35 D0 FD A8 09 12 64 34
+74 B8 A0 60 6D 25 1E 6A 8C 68 96 05 CC 75 70 54
+```
+
+Encoder and decoder must start from this exact array. §3.6 then shuffles
+it in place under the password, so a single wrong entry changes the whole
+derived table.
 
 ### 3.3 Round function
 
@@ -227,9 +254,9 @@ buffer (which holds ciphertext after the writeback) and the decoder
 uses the saved copy of its input (which is the same ciphertext). This
 is what keeps the key state synchronized between encryptor and
 decryptor. An implementation that feeds plaintext to `upd_keys_20` on
-either side will desync after the first block. Verified at
-`crypt2.cpp:84` (`UpdKeys20(Buf)` after encrypt writeback) and
-`crypt2.cpp:108` (`UpdKeys20(InBuf)` with the saved input).
+either side will desync after the first block. This is what the two-block
+members in the §3 fixture catch: feed plaintext here and `FILE1.TXT`
+decrypts to `file1\r\n` for its first 16 bytes and garbage after.
 
 ### 3.6 Key derivation from password
 
@@ -277,9 +304,15 @@ brute force. Do not use for anything real.
 
 **AES-128**, not 256. 16-byte AES key plus 16-byte AES-CBC IV are
 derived together from a 262144-round SHA-1 chain over
-`utf16le(password) || salt[0..7]`. Verified against
-`_refs/unrar/crypt3.cpp` (`SetKey30`) and
-`_refs/unrar/sha1.cpp` (`sha1_process_rar29`, `sha1_done`).
+`utf16le(password) || salt[0..7]`.
+
+**Oracles for this section:** `fixtures/1.5-4.x/rar300/header_encrypted_rar300.rar`
+(`-hp` header encryption), `.../rar300/encrypted_per_file_rar300.rar`
+(per-file), and `.../rar420/header_encrypted_rar420.rar` for the
+cross-version case. All three use password `password` and yield
+`hello.txt` with CRC32 `0xa538535e`. A 262144-round chain either lands
+bit-exact or produces nothing usable, so a correct CRC on any of them
+pins the whole derivation, both byte orders in §4.2 included.
 
 ### 4.1 KDF inputs
 
@@ -327,12 +360,11 @@ Key facts an implementer needs:
   snapshot; `sha1_done` is called on a *copy* of the context so the
   running chain is undisturbed. Equivalent: clone state[5] + count +
   buffer, finalize the clone, discard the clone.
-- **IV byte source:** `(byte)digest[4]` in unrar takes the low 8 bits
-  of the fifth state word. Since `sha1_done` writes
-  `digest[i] = state[i]` natively (`sha1.cpp:197-198`) and SHA-1 outputs
-  state words in big-endian standard byte order, this corresponds to
-  **byte 19 of the 20-byte standard SHA-1 digest** (the
-  least-significant byte of the last word).
+- **IV byte source:** **byte 19 of the 20-byte standard SHA-1 digest**,
+  the last byte of the last word. Implementations that keep the digest as
+  five native-endian `uint32` words reach the same byte as the low 8 bits
+  of word 4, but only because standard SHA-1 output is big-endian. Take
+  the digest as bytes and index 19 and the question does not arise.
 - **AES key byte order:** the 16 key bytes are extracted from
   `digest[0..3]` in **little-endian** order per word: `AESKey[0]` =
   low byte of `digest[0]`, `AESKey[3]` = high byte of `digest[0]`,
@@ -403,10 +435,15 @@ rather than reverse rounds. The key schedule is built once and reused.
 
 ### 4.5 KDF cache
 
-`KDF3Cache` keys on `(password, salt-presence, salt[0..7])` and
-caches `(AESKey, AESInit)`. Encoder and decoder both populate it. See
-`crypt3.cpp:6-16` for the lookup and `:55-61` for the insert. Cache
-size is fixed; entries cycle FIFO-by-position via `KDF3CachePos`.
+Nothing in the format requires a cache, and rars ships without one. It
+is worth having anyway. The 262144 rounds cost about 10 ms per
+derivation here, measured as the gap between extracting an encrypted and
+a plain RAR 3.00 fixture, and an archive whose members share a password
+repeats that identical derivation once per member.
+
+The cache key is `(password, salt-presence, salt[0..7])` and the value
+is `(AESKey, AESInit)`. Both directions can use one cache, since the
+derivation does not depend on which way you are going.
 
 ### 4.6 Write-side encryption
 
