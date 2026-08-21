@@ -124,8 +124,8 @@ The two extension shapes are mutually exclusive in observed RAR 1.40 output
 (no fixture or wild archive has been seen with both `MHD_COMMENT` and
 `MHD_AV` set on the same main header). Spec leaves the layout undefined when
 both bits are set; readers may treat the combination as malformed or skip the
-extension entirely. Modern UnRAR (`_refs/unrar/arcread.cpp::ReadHeader14`)
-takes the latter approach: it parses neither extension and just advances to
+extension entirely. Modern readers take the latter approach: they parse
+neither extension and just advance to
 `NextBlockPos = CurBlockPos + HeadSize` regardless of which flags are set.
 
 ### Archive Flags
@@ -220,8 +220,8 @@ strategies are observed in the wild:
 | 2         | 13               | Compressed with RAR 1.3 / Unpack15 codec. |
 | anything else | 10           | Stored or minimal compression — reader skips Huffman/LZ and emits the raw payload bytes (subject to method-byte further refinement). |
 
-Modern UnRAR (`_refs/unrar/arcread.cpp::ReadHeader14`) implements exactly
-this mapping: `FileHead.UnpVer = (raw == 2) ? 13 : 10` with no rejection.
+Modern readers implement exactly this mapping, `UnpVer = (raw == 2) ? 13
+: 10`, with no rejection.
 The AROS reader is stricter and rejects raw values `0` and `>20` outright
 (see §5 "Header Validation" below); both behaviors are valid against
 known RAR 1.40 output, which only ever emits raw `2` for compressed and
@@ -380,7 +380,6 @@ Since `0xFFFF > 0xFFF0`, the comparison `DecTab[i] <= Num` is guaranteed to
 become false at or before the first `0xFFFF` slot — so `i` never advances
 past the array. The trailing `0xFFFF` entries are explicit sentinels: an
 implementation may rely on them and does not need a separate bounds check.
-Verified against `_refs/unrar/unpack15.cpp:493` (`Unpack::DecodeNum`).
 
 ### 6.7 Decode Tables
 
@@ -450,8 +449,7 @@ Note: `ShortLen1[1]` and `ShortLen2[3]` are dynamically modified to
   value `0xFF`). On that exact pair, `Buf60 ^= 1` and the rep-match is
   *not* emitted — the encoder is signalling a state change only.
 - The toggle persists across symbols until the next trigger event;
-  there is no implicit reset. (`_refs/unrar/unpack15.cpp:117-118`,
-  `:194-195`.)
+  there is no implicit reset.
 
 In implementation, declaring `ShortLen1` / `ShortLen2` as constants and
 using accessor macros that substitute `Buf60 + 3` for indices 1 and 3
@@ -483,9 +481,9 @@ state thread-friendly and matches the upstream macro form.
 
 ### 6.10 Main Decode Loop
 
-`OldUnpInitData(solid)` is the codec-state reset, split across the shared
-`UnpInitData` (`_refs/unrar/unpack.cpp:206`) and the codec-specific
-`UnpInitData15` (`unpack15.cpp:430`). On a non-solid file it resets:
+`OldUnpInitData(solid)` is the codec-state reset, split between the
+shared unpacker reset and the Unpack15-specific one. On a non-solid file
+it resets:
 
 | State | Reset value |
 |-------|-------------|
@@ -508,8 +506,7 @@ On a solid file none of the above carry-over state is touched; only the
 unconditional fields and the input bit cursor are reset.
 
 **Window contents on non-solid.** The 64-KiB window is *not* explicitly
-zero-filled. `CopyString15` (`_refs/unrar/unpack15.cpp:474`) instead guards
-the copy: while `FirstWinDone == false`, any back-reference whose
+zero-filled. The match copy guards instead: while `FirstWinDone == false`, any back-reference whose
 `Distance > UnpPtr` (or `Distance == 0`, or `Distance > MaxWinSize`)
 emits zero bytes instead of reading the window. So an encoder may assume
 every byte before its first match is implicitly zero, and a decoder
@@ -748,8 +745,7 @@ procedure ShortLZ():
         # toward index 0. Unlike ChSet/ChSetB/ChSetC, ChSetA does not
         # use the (CharSet, NumToPlace) frequency-corrected scheme —
         # the swap-up-by-one is the entire MTF rule, and there is no
-        # corresponding NToPlA array. Verified against
-        # `_refs/unrar/unpack15.cpp:217-222`.
+        # corresponding NToPlA array.
         LastDistance = ChSetA[DistancePlace - 1]
         ChSetA[DistancePlace] = LastDistance
         ChSetA[DistancePlace - 1] = Distance
@@ -1211,7 +1207,13 @@ The encryption is a simple stream cipher: each byte is modified by subtracting
 a key byte that evolves via addition of the three key state bytes. (The XOR of
 `P` into `Key[1]` and the rotate of `Key[2]` happen during key derivation
 (§7.1) only; the per-byte update during decryption is purely additive.)
-Verified against `_refs/unrar/crypt1.cpp` (`SetKey13` / `Decrypt13`).
+
+**Oracle.** `rar13/README_password=password.rar` and
+`rar13/STOREPWD.RAR` in the rars tree are RAR 1.3 encrypted archives,
+password `password`. `STOREPWD.RAR` is stored rather than compressed, so
+it isolates the cipher from Unpack15 entirely. The keystream evolves per
+byte, so a wrong update rule diverges after the first byte and the CRC
+fails.
 
 ### 7.3 Comment Encryption
 
@@ -1248,8 +1250,8 @@ Packed comments are decoded as:
    using `UnpCmtLength` as the output bound and a non-solid 64 KiB window.
    Note: this is fixed at the `UnpVer=15` variant for packed comments
    regardless of the surrounding archive's file-data `UnpVer` (which is
-   `13` for RAR 1.4 file payloads). Modern UnRAR pins this explicitly via
-   `CommHead.UnpVer = 15` on the RAR 1.4 path (`_refs/unrar/arccmt.cpp`).
+   `13` for RAR 1.4 file payloads). Readers pin the comment decoder to
+   `UnpVer = 15` on the RAR 1.4 path.
 
 RAR 1.4 comments do not carry a separate comment CRC in this inline form.
 Malformed packed comments are detected by header bounds and by the Unpack15
