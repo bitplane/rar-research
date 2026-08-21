@@ -794,16 +794,11 @@ function MakeEscFreq(num_masked) -> (See, esc_freq):
 
     if min_context.num_stats != 256:
         row = ns2indx[non_masked - 1]
-        // NOTE: the subtraction below is unsigned and uses C wraparound
-        // semantics. If suffix.num_stats < min_context.num_stats, the
-        // unsigned underflow yields a very large value and the
-        // comparison evaluates to TRUE (since `non_masked` is small).
-        // Implementations using signed/checked arithmetic must replicate
-        // this behavior — treat "underflow" as "TRUE" rather than an
-        // error — or they will diverge in the small fraction of cases
-        // where the suffix happens to have fewer non-masked symbols than
-        // the current context.
-        col = (non_masked < suffix(min_context).num_stats - min_context.num_stats)
+        // wrapping_sub, not a checked one: the suffix context is often the
+        // smaller of the two, and the underflow is load-bearing. See below.
+        suffix_delta = wrapping_sub(suffix(min_context).num_stats,
+                                    min_context.num_stats)
+        col = (non_masked < suffix_delta)
             + 2 * (min_context.summ_freq < 11 * min_context.num_stats)
             + 4 * (num_masked > non_masked)
             + hi_bits_flag
@@ -818,6 +813,13 @@ function MakeEscFreq(num_masked) -> (See, esc_freq):
 
     return (see, esc_freq)
 ```
+
+When `suffix.num_stats < min_context.num_stats`, `suffix_delta` wraps to a
+huge value and `non_masked < suffix_delta` is therefore true. That true is the
+intended answer, not an accident to be repaired: a checked subtraction raises,
+a saturating one returns 0 and flips the comparison to false, and either way
+the column is wrong and the decoder diverges from that point on. Use whatever
+your language calls wrapping subtraction.
 
 ### 9.2 SEE Update
 
