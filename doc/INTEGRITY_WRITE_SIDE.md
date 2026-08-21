@@ -254,8 +254,23 @@ def pn_init(par_size):
     # GXPol is now g(x) of degree par_size
 ```
 
-`pn_mult` is a straightforward polynomial multiplication over `GF(2^8)`
-(add-by-XOR, multiply-by-gfMult).
+`pn_mult` multiplies over `GF(2^8)`, add-by-XOR and multiply-by-gfMult, and
+**keeps only the low `par_size` coefficients**:
+
+```python
+def pn_mult(p1, p2, par_size):
+    r = [0] * par_size
+    for i in range(par_size):
+        if p1[i] != 0:
+            for j in range(par_size - i):        # nothing at or above par_size
+                r[i + j] ^= gfMult(p1[i], p2[j])
+    return r
+```
+
+The truncation is not an optimisation. `g(x)` has degree `par_size` and its
+leading coefficient is 1, so that term is implicit and never stored. Compute
+the full `2 * par_size` product instead and every coefficient the encoder reads
+afterwards is at the wrong index.
 
 ### 3.3 Systematic encoder (LFSR)
 
@@ -542,7 +557,7 @@ symbol size is 16 bits and the field is `GF(2^16)` under polynomial
 
 ```
 def gf_init():
-    gfSize = 65536
+    gfSize = 65535                  # non-zero elements, 2^16 - 1
     gfExp = [0] * (4 * gfSize + 1)
     gfLog = [0] * (gfSize + 1)
     e = 1
@@ -553,6 +568,11 @@ def gf_init():
         e <<= 1
         if e > gfSize:
             e ^= 0x1100B
+    # gfSize counts the elements of the multiplicative group, so 2^16 - 1,
+    # not 2^16. Run the loop 65536 times and the generator comes back round
+    # to 1 on the last step, overwriting gfLog[1] with 65535 where it should
+    # be 0. Every later multiply by 1 then reads a log of 65535, which is
+    # most of them during systematic encoding.
     # Sentinel: log(0) points into the zero region so mul-by-zero works
     # without an explicit check.
     gfLog[0] = 2 * gfSize
