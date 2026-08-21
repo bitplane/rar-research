@@ -327,14 +327,22 @@ def forward_rgb(buf, width, posR):
     #          (0, 1, or 2) — typically 2 for BGR or 0 for RGB
     n        = len(buf)
     channels = 3
-    out      = bytearray(n)
-    # For each channel, run a Paeth predictor and emit the residual.
+    # Step 1: subtract green from red and blue, on the *image*.
+    data = bytearray(buf)
+    for i in range(posR, n - 2, 3):
+        g = data[i + 1]
+        data[i]     = (data[i]     - g) & 0xFF
+        data[i + 2] = (data[i + 2] - g) & 0xFF
+    # Step 2: Paeth-predict the channel-differenced image. Output is written
+    # sequentially, one channel plane after another, not in place.
+    out = bytearray(n)
+    src_pos = 0
     for c in range(channels):
         prev_byte = 0
         for i in range(c, n, channels):
             if i >= width + 3:
-                upper        = out[i - width]     # byte one scanline up
-                upper_left   = out[i - width - 3] # diagonal neighbor
+                upper        = data[i - width]     # byte one scanline up
+                upper_left   = data[i - width - 3] # diagonal neighbor
                 predicted    = prev_byte + upper - upper_left
                 pa = abs(predicted - prev_byte)
                 pb = abs(predicted - upper)
@@ -347,15 +355,24 @@ def forward_rgb(buf, width, posR):
                     predicted = upper_left
             else:
                 predicted = prev_byte
-            out[i] = (predicted - buf[i]) & 0xFF  # residual, forward
-            prev_byte = buf[i]                    # NOTE: not `out[i]`
-    # Red/blue green-subtraction pass (PNG sub-filter variant):
-    for i in range(posR, n - 2, 3):
-        g = out[i + 1]
-        out[i]     = (out[i]     - g) & 0xFF
-        out[i + 2] = (out[i + 2] - g) & 0xFF
+            out[src_pos] = (predicted - data[i]) & 0xFF
+            prev_byte = data[i]                   # the value, not the residual
+            src_pos += 1
     return out
 ```
+
+### Trap: the two passes are ordered, and only one order inverts
+
+The decoder reconstructs the Paeth prediction first and adds green back
+second, so its input is the green-subtracted image. The encoder must
+therefore undo those steps in the opposite order: **green subtraction
+first, Paeth second.**
+
+Doing Paeth first and then subtracting `out[i+1]` from `out[i]` takes the
+difference of two *residuals*, which is not what the decoder adds back.
+The Paeth taps have the same problem: they read `data[...]`, the
+green-subtracted values, never `out[...]`. Run the reverse transform over
+the output of the wrong order and it does not return the input.
 
 ### Trap: R[0] is the stride plus 3
 
