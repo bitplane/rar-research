@@ -498,9 +498,24 @@ round-tripping must emit a `0x06` record.
 ### File Name Encoding
 
 File names are UTF-8. On Unix, high-ASCII bytes that can't be correctly converted
-to Unicode are mapped to the `0xE080`-`0xE0FF` private use area, with a `0xFFFE`
-non-character inserted somewhere in the string to indicate mapped characters are
-present. These names are only portable on the originating system.
+to Unicode are mapped to the `0xE080`-`0xE0FF` private use area, and a `0xFFFE`
+non-character marks that the name contains such bytes.
+
+The mark goes **immediately before the first mapped byte**, and only once:
+
+```
+for each source byte:
+    if byte < 0x80:
+        copy it
+    else:
+        if no mark written yet:
+            emit 0xFFFE
+        emit 0xE000 + byte          # lands in 0xE080-0xE0FF
+```
+
+So a reader can stop at the first `0xFFFE` rather than scanning the whole name,
+and everything from that point on may be mapped. Names carrying it are only
+portable on the system that wrote them.
 
 ### Service Header Names
 
