@@ -37,14 +37,20 @@ which `ReadHeaderXX` function feeds the walk.
 |--------|-------|--------|-----------------|
 | RAR 1.3/1.4 | `52 45 7E 5E` (`RE~^`) | 4 | Usually offset 0 |
 | RAR 1.5–4.x | `52 61 72 21 1A 07 00` (`Rar!` + `0x1a 0x07 0x00`) | 7 | Usually offset 0; SFX-scan if not |
-| RAR 5.0/7.0 | `52 61 72 21 1A 07 01` (`Rar!` + `0x1a 0x07 0x01`) | 7 | Same as 1.5–4.x |
+| RAR 5.0/7.0 | `52 61 72 21 1A 07 01 00` (`Rar!` + `0x1a 0x07 0x01 0x00`) | 8 | Same scan rules as 1.5–4.x; note the trailing `0x00` |
 
 `52` (`'R'`) is the lead byte for all three. A reader fast-paths by
 reading the first 7 bytes and checking them against the three forms.
-Byte 7 of the `Rar!` form
-distinguishes RAR 1.5–4.x (`0x00`) from RAR 5.0 (`0x01`); values
-`0x02..0x04` are reserved for a hypothetical `RARFMT_FUTURE` and
-should be rejected.
+Byte 7 of the `Rar!` form distinguishes RAR 1.5–4.x (`0x00`) from
+RAR 5.0 (`0x01`); values `0x02..0x04` are reserved for a hypothetical
+future format and should be rejected.
+
+The RAR 5.0 marker does not stop at that byte. An **eighth** byte, `0x00`,
+follows, so the whole marker block is 8 bytes and the first real header
+begins at offset 8. Seven bytes is enough to decide *which* format you
+are looking at, which is why a reader can fast-path on seven, but a
+reader that then advances by seven lands one byte short of the first
+header and misparses everything after it.
 
 **Oracles for §2.** The rars fixture tree carries a self-extractor per
 era: `rar13/SFXSRC.EXE` for RAR 1.3/1.4 and `readme.EXE` in the spec

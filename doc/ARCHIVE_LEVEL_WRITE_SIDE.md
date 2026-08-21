@@ -151,7 +151,7 @@ because the file's data stream simply continues in the next volume.
 
 ### 1.1 What carries over and what resets
 
-The canonical source is `Unpack::UnpInitData(bool Solid)` at
+The canonical description is the unpacker's per-file state reset at
 a public RAR reader, the entry point shared by **Unpack50
 (RAR 5.0) and Unpack70 (RAR 7.0)** — they both dispatch through the same
 init. Reading the unconditional vs the `if (!Solid)` branches produces
@@ -257,8 +257,16 @@ a solid-continuation file has three choices:
 - `table_present = 0`: reuse the previous block's Huffman tables. Cheap
   (~50 bytes saved) but only valid if the statistics haven't shifted.
 - `table_present = 1` with full 20-symbol level table: new tables. Safe.
-- `table_present = 1` with delta-zero lengths: degenerate case — emits
-  a new table identical to the previous one. Pointless but valid.
+- `table_present = 1` restating the previous lengths: degenerate case —
+  emits a new table identical to the previous one. Pointless but valid.
+
+**Unpack50 does not delta-encode against the previous table.** That is
+the RAR 2.0 and RAR 2.9 mechanism, and it does not carry forward. In
+those two codecs a decoded level symbol `0..15` is added to the previous
+table's entry modulo 16; in Unpack50 the same symbol *is* the length,
+assigned outright. `table_present = 0` simply leaves the loaded tables
+alone, with no arithmetic anywhere. An encoder that subtracts a baseline
+before RLE-packing produces a stream Unpack50 cannot read.
 
 A practical encoder picks `table_present = 0` when the file is small
 (< 32 KB) and highly similar to the previous one; otherwise emits new
@@ -360,7 +368,7 @@ half is represented by a separate file header with a continuation flag:
 | RAR version | Flag for "split before" (prev volume continues here) | Flag for "split after" (continues in next volume) |
 |---|---|---|
 | 2.x/3.x/4.x | `LHD_SPLIT_BEFORE` (`0x0001` in file header flags) | `LHD_SPLIT_AFTER` (`0x0002`) |
-| 5.0 | Common header flag bit 0 (`0x0001` — "data continues from previous volume") | Common header flag bit 1 (`0x0002` — "data continues in next volume") |
+| 5.0 | `HFL_SPLIT_BEFORE`, common header flag bit 3 (`0x0008`) | `HFL_SPLIT_AFTER`, common header flag bit 4 (`0x0010`) |
 
 Both flags appear in the **file header** (and identically in service
 headers), not the block header. A single file's data can span 3+ volumes
@@ -845,10 +853,21 @@ For each cached header:
     HeaderData   : HeaderSize bytes       # literal copy of the original header
 ```
 
-`CRC32` is the `CRC50` variant (§CRC32_SPECIFICATION.md) computed over the
-wrapper body only. `BlockSize` covers the body bytes (Flags through
-HeaderData) — it does not include the CRC32 field or the BlockSize vint
-itself.
+`CRC32` is the `CRC50` variant (§CRC32_SPECIFICATION.md) computed over
+**`BlockSize` and the body together**, not the body alone. `BlockSize`
+itself counts only the body bytes (Flags through HeaderData), so the
+value being checksummed is one byte-count longer than the value the
+count describes.
+
+That is the easy thing to get wrong here, because the length is written
+*after* the checksum it forms part of. Getting it wrong is also close to
+invisible: a reader that rejects a wrapper falls back to walking the
+block chain, so the archive still opens, still tests clean, and the
+index is simply never used.
+
+Measured on `rar712 a -qo+` output: for every wrapper,
+`crc32(BlockSize || body)` matches the stored value and `crc32(body)`
+does not.
 
 The payload (concatenation of all wrappers) is the `UnpSize` of the QO
 service header. The decoder streams it 64 KB at a time,
@@ -887,10 +906,10 @@ def build_qo_payload(all_headers, qo_header_abs_pos):
             + encode_vint(len(hdr.raw_bytes))
             + hdr.raw_bytes
         )
+        framed = encode_vint(len(body)) + body   # BlockSize counts body only
         wrapper = (
-            rar_crc50(body).to_bytes(4, 'little')           # CRC of body only
-            + encode_vint(len(body))                        # BlockSize = len(body)
-            + body
+            rar_crc50(framed).to_bytes(4, 'little')   # ...but the CRC spans both
+            + framed
         )
         out += wrapper
     return out
@@ -974,20 +993,39 @@ at link creation time.
 ```
 File Time Record type 0x03:
     Flags : vint
-        bit 0: modification time present
-        bit 1: creation time present
-        bit 2: access time present
-        bit 3: Unix time format (else Windows FILETIME)
-        bit 4: nanosecond precision (only with Unix time)
-    modification_time : uint32 or uint64     (if bit 0)
-    creation_time     : uint32 or uint64     (if bit 1)
-    access_time       : uint32 or uint64     (if bit 2)
+        bit 0 (0x01): Unix time_t format (else Windows FILETIME)
+        bit 1 (0x02): modification time present
+        bit 2 (0x04): creation time present
+        bit 3 (0x08): access time present
+        bit 4 (0x10): nanosecond precision (Unix format only)
+    mtime_sec : uint32 or uint64             (if bit 1)
+    ctime_sec : uint32 or uint64             (if bit 2)
+    atime_sec : uint32 or uint64             (if bit 3)
+    mtime_ns  : uint32                       (if bit 4 and bit 1)
+    ctime_ns  : uint32                       (if bit 4 and bit 2)
+    atime_ns  : uint32                       (if bit 4 and bit 3)
 ```
 
-For Unix-format times without nanoseconds, each time is a `uint32`
-(seconds since epoch). With nanoseconds, each is a `uint64` (nanoseconds
-since epoch). For Windows FILETIME, each is a `uint64` (100-nanosecond
-ticks since 1601-01-01 UTC).
+**The format flag is bit 0, not bit 3, and nanoseconds do not widen the
+seconds field.** All the seconds come first, then all the nanoseconds,
+each a separate `uint32` appended at the end of the record.
+
+For Unix format the seconds are a `uint32` since the epoch. For Windows
+FILETIME each time is a `uint64` of 100-nanosecond ticks since
+1601-01-01 UTC and bit 4 does not apply.
+
+Measured with `rar712`, one file, varying which times are stored:
+
+| Switches | Flags | Payload |
+|---|---|---|
+| `-tsm` | `0x13` | 2 × `uint32`: mtime_sec, mtime_ns |
+| `-tsm -tsa` | `0x1B` | 4 × `uint32`: mtime_sec, atime_sec, mtime_ns, atime_ns |
+| `-tsm -tsc -tsa` | `0x1F` | 6 × `uint32` in the order above |
+
+Adding access time sets `0x08` and adding creation time sets `0x04`,
+which is what fixes the bit order. Under the old reading, mtime-only
+would have been `0x19`. A file stamped with 123456789 ns reads back
+exactly 123456789 in the `mtime_ns` slot, which is what fixes the width.
 
 Encoder rule: pick the format that matches the source filesystem. On
 Unix, prefer Unix nanosecond format; on Windows, prefer Windows FILETIME.
