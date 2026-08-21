@@ -520,6 +520,30 @@ to open the next volume. Naming conventions:
 The reader derives the next-volume filename and opens it; if it
 doesn't exist, report "missing volume" and stop.
 
+**Try the other convention before giving up.** Volume sets get renamed
+in transit, so the names on disk need not match the scheme the archive
+declares. When the expected name is absent, derive the name under the
+other convention and try that too.
+
+Measured on a RAR 5.0 six-volume set renamed from `new.partN.rar` to
+`arc.rar` plus `arc.r00`…`arc.r04`, which is a scheme RAR 5.0 never
+writes: RAR 7.12 and UnRAR 7.20 both open the set and report `All OK`.
+
+**A candidate that exists is not necessarily a file.** On Unix,
+`open(2)` on a directory succeeds for reading, so a directory sitting at
+the expected volume path gets opened and then fails at the first header
+read, which surfaces as an I/O error or a retry prompt instead of the
+honest "this volume is missing". Stat the candidate and skip it unless
+it is a regular file.
+
+Measured by replacing volume 2 with a directory of the same name: RAR
+7.12 and UnRAR 7.20 both report `Cannot find volume new.part2.rar`, the
+same message as for an absent volume.
+
+Neither rule applies to a reader that takes an explicit list of volumes
+from its caller instead of searching the filesystem, which is how `rars`
+works; there is no candidate to probe and nothing to stat.
+
 ### 8.4 State across volumes
 
 For split files (`LHD_SPLIT_BEFORE` / `LHD_SPLIT_AFTER`), the
