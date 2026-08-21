@@ -2466,8 +2466,9 @@ symbol frequencies over the block, builds Huffman tables via
 `HUFFMAN_CONSTRUCTION.md`, and emits the tables followed by the encoded
 symbols. No adaptive MTF state, no running averages to mirror.
 
-Primary reference: `_refs/7zip/CPP/7zip/Compress/Rar2Decoder.cpp` (reader).
-Treat reader implementations as format references, not encoder source.
+The decode side is §16.3–16.10 above; an encoder mirrors those and is
+checked by round-trip. RAR 2.50 and RAR 3.93 both read `UnpVer` 20, and
+the `rar250/` fixtures in the rars tree are vintage output to decode.
 
 #### 16.11.1 Encoder pipeline
 
@@ -2558,8 +2559,8 @@ times. For runs longer than 138 zeros, split into multiple 18 runs.
 
 Step 3: count the 19 level symbols' frequencies, build a Huffman over them
 via `HUFFMAN_CONSTRUCTION.md` §3 with `maxLen = 15`. Emit the 19 level code
-lengths as raw 4-bit fields (the decoder reads them directly at line 157 of
-`Rar2Decoder.cpp`).
+lengths as raw 4-bit fields, read back directly with no escape mechanism;
+see §16.4 for the decode side.
 
 Step 4: emit the RLE-packed level symbols using the level Huffman's canonical
 codes (via §4 of `HUFFMAN_CONSTRUCTION.md`).
@@ -3067,9 +3068,10 @@ encoding for large distances, repeat-distance **rotation** (opposite of
 match finder → symbol frequencies → Huffman tables → RLE level encoding →
 canonical code emission.
 
-Primary reference: `_refs/7zip/CPP/7zip/Compress/Rar3Decoder.cpp` (reader,
-~940 lines). Filter handling (Rar3Vm) is out of scope for this section and
-covered by the Filters item in `IMPLEMENTATION_GAPS.md`.
+The decode side is §18.2–18.7 above; an encoder mirrors those and is
+checked by round-trip against RAR 3.93, RAR 7.12 and UnRAR 7.20, which
+all read `UnpVer` 29. Filter handling is out of scope here and covered by
+the Filters item in `IMPLEMENTATION_GAPS.md`.
 
 #### 18.8.1 Mode selection (LZ vs PPMd)
 
@@ -3476,8 +3478,15 @@ Known filter fingerprints (CRC32 of bytecode):
 |    216 | `0xBC85E701` | AUDIO    | Audio delta (channels in R0). |
 
 Both the CRC32 **and** the byte length must match for fingerprint recognition.
-Reference behavior is confirmed by independent RARVM readers, including
-`_refs/7zip/CPP/7zip/Compress/Rar3Vm.cpp`.
+
+Five of these six pairs were read off bytecode found inside archives
+rather than copied from a decoder: E8, E8E9 and DELTA out of
+`farmanager170.rar` in the rars fixture tree, RGB and AUDIO out of
+archives RAR 3.93 produced from data that attracts them (RGB needs
+`-mcc+`; left alone RAR 3.93 picks DELTA for image data). ITANIUM is the
+exception and is qualified in `FILTER_TRANSFORMS.md` §9: no archive to
+hand contains it, and what is confirmed is only that the reference
+readers accept the blob and return correct bytes.
 
 For standard filters, bytecode identity selects the native transform and runtime
 parameters are supplied through the invocation state:

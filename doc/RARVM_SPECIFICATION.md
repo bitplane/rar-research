@@ -8,11 +8,15 @@ non-standard bytecode by implementing this VM.
 This document covers the VM bytecode and execution semantics. The outer filter
 record framing is in `RAR15_40_FORMAT_SPECIFICATION.md` Section 20.2.
 
-Source basis:
+Basis: the standard-filter bytecode carried in real RAR 3.x archives,
+disassembled against this instruction table and checked by running it.
+An implementation is right when the six standard programs decode to the
+transforms in `FILTER_TRANSFORMS.md` §9 and archives carrying custom
+programs extract byte-identically against RAR 7.12 and UnRAR 7.20.
 
-- `_refs/7zip/CPP/7zip/Compress/Rar3Vm.cpp` and `.h`
-- `_refs/XADMaster/XADRARVirtualMachine.m`
-- `_refs/XADMaster/RARVirtualMachine.c` and `.h`
+`_refs/XADMaster` (`XADRARVirtualMachine.m`, `RARVirtualMachine.c`) is an
+LGPL RAR reader carrying no unRAR restriction, so it is usable for a
+second opinion where one is wanted.
 
 ## 1. Machine Model
 

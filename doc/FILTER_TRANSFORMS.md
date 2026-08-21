@@ -608,7 +608,7 @@ An encoder has three options:
 2. **Assemble from source.** Find or reconstruct the RARVM assembly source
    for each filter (E8/E8E9 are ~20 lines, DELTA is ~10, RGB is ~60). Hand-
    assemble to bytecode using the RARVM instruction encoding in
-   `_refs/7zip/CPP/7zip/Compress/Rar3Vm.cpp`.
+   `RARVM_SPECIFICATION.md`.
    More work, but reproducible without any vintage archive.
 3. **Disassemble a vintage WinRAR.** Recover the exact bytecode from a RAR 3.x
    encoder binary.
@@ -688,17 +688,31 @@ format version bump.
 
 ### Standard filter fingerprints (corrected)
 
-The following CRC32 + length pairs are authoritative (cross-checked against
-`_refs/7zip/CPP/7zip/Compress/Rar3Vm.cpp`):
+| Length | CRC32      | Filter  | Read out of |
+|-------:|:-----------|:--------|:------------|
+|     53 | 0xAD576887 | E8      | `farmanager170.rar` |
+|     57 | 0x3CD7E57E | E8E9    | `farmanager170.rar`, `filter_bsdcat_exe.rar` |
+|    120 | 0x3769893F | ITANIUM | see below |
+|     29 | 0x0E06077D | DELTA   | `farmanager170.rar` and most RAR 3.x fixtures |
+|    149 | 0x1C2C5DC8 | RGB     | RAR 3.93, `a -m5 -mcc+` over raw 24-bit RGB |
+|    216 | 0xBC85E701 | AUDIO   | RAR 3.93, `a -m5` over a 16-bit stereo WAV |
 
-| Length | CRC32      | Filter  |
-|-------:|:-----------|:--------|
-|     53 | 0xAD576887 | E8      |
-|     57 | 0x3CD7E57E | E8E9    |
-|    120 | 0x3769893F | ITANIUM |
-|     29 | 0x0E06077D | DELTA   |
-|    149 | 0x1C2C5DC8 | RGB     |
-|    216 | 0xBC85E701 | AUDIO   |
+Five of the six are lengths and checksums taken off bytecode found inside
+archives, not copied from anyone's decoder. `farmanager170.rar` is a
+third-party archive in the rars fixture tree; the RGB and AUDIO rows come
+from archives RAR 3.93 produced when handed data that attracts those
+filters. RGB needs `-mcc+`: left to itself RAR 3.93 picks DELTA for image
+data.
+
+**ITANIUM is the weaker row.** No archive here contains it, since
+attracting it needs IA-64 machine code. What is measured instead is that
+the 120-byte blob is the one the reference accepts: rars writes it with
+`--itanium-filter`, and RAR 7.12 and UnRAR 7.20 both return the payload
+byte-identically. That leaves one gap. A reference reader could be
+executing the bytecode as an ordinary VM program rather than recognising
+the fingerprint and running its native transform, and both routes produce
+the same bytes. So the blob is known-good; its identity as WinRAR's own
+ITANIUM program is not independently confirmed.
 
 These match the table in `RAR15_40_FORMAT_SPECIFICATION.md` §20.3, which
 is the authoritative copy.

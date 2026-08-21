@@ -2,7 +2,11 @@
 
 **Independent documentation derived from publicly available sources:**
 - RARLAB's published technote (https://www.rarlab.com/technote.htm)
-- 7-Zip source code (LGPL, independently written by Igor Pavlov)
+- 7-Zip source code, for its PPMd, Huffman and match-finder code, which is
+  public domain and unrelated to RAR. Its `Compress/Rar*` decoders are
+  **not** used here: 7-Zip states they were developed from unRAR source and
+  carry the unRAR restriction, so they are no more usable for this than
+  unRAR itself.
 
 ## Table of Contents
 
@@ -980,9 +984,9 @@ compressed symbols.
 
 ### 11.1 Decoder Properties
 
-The decoder receives 2 bytes of properties (7-Zip `Rar5Decoder::SetProperties`
-API — not the wire format; see §8 "Compression Information" for the
-on-disk CompInfo vint):
+Some readers hand their decoder 2 bytes of properties separately from the
+stream. That is an internal API shape, not the wire format; the on-disk
+form is the CompInfo vint in §8. The two bytes carry:
 
 | Byte | Field |
 |------|-------|
@@ -1328,9 +1332,9 @@ shares its match finder (`LZ_MATCH_FINDING.md`) and Huffman construction
 (`HUFFMAN_CONSTRUCTION.md`) with a RAR 3.x encoder is only a few hundred
 lines of version-specific logic.
 
-Primary reference: `_refs/7zip/CPP/7zip/Compress/Rar5Decoder.cpp` (~2060
-lines, independent reader). Filter encoding parameters are trivial and
-covered in §11.11.8 below.
+The decode side is §11.1–11.10 above; an encoder mirrors those and is
+checked by round-trip against RAR 7.12 and UnRAR 7.20. Filter encoding
+parameters are trivial and covered in §11.11.8 below.
 
 #### 11.11.1 Encoder pipeline
 

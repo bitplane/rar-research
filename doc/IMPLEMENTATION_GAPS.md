@@ -16,9 +16,16 @@ codec/format. Items in the same bucket need the same kind of work.
 
 External material lives under `_refs/` (gitignored):
 
-- `_refs/7zip/` — 7-Zip 25.01 (independent decoders + PPMd/Huffman/LzFind
-  encoders). Authoritative for second-opinion checks and for encoder-side
-  algorithms not exposed by historical RAR binaries.
+- `_refs/7zip/` — 7-Zip 25.01. Useful for its PPMd, Huffman and LzFind
+  code, which is public domain and has nothing to do with RAR.
+
+  Its `CPP/7zip/Compress/Rar*` decoders are **off limits**. 7-Zip's own
+  `DOC/License.txt` puts them under "GNU LGPL with unRAR license
+  restriction" and says the RAR decompression engine was developed from
+  unRAR source; each file repeats it: "According to unRAR license, this
+  code may not be used to develop a program that creates RAR archives".
+  That is exactly what this project is, so they are no more usable than
+  unRAR itself, whatever their reputation as an independent reader.
 - `_refs/XADMaster/` — The Unarchiver (Obj-C RAR 1.3-4.x handlers). Useful
   alternate reference, especially for RAR 1.3 (Unpack13).
 - `_refs/rarbins/` — old RAR/WinRAR binaries for fixture generation and

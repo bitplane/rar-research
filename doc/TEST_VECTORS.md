@@ -537,9 +537,11 @@ Observed local reader behavior for the committed fixtures:
 | RAR 5.0/7.0 writer smoke tests | Useful public reader oracle | Too old | Too old for RAR 5.0/7.0 | Use a modern public reader when RAR5/7 fixture output exists. |
 
 This matrix is a compatibility aid, not a normative part of the file format.
-Current 7-Zip is still useful for listing metadata and independent source-code
-cross-checks, but it is not the extraction oracle for the historical compressed
-fixtures in this repository.
+Current 7-Zip is still useful as a black-box reader for listing metadata,
+but it is not the extraction oracle for the historical compressed
+fixtures in this repository, and its RAR decoder **source** is not a
+cross-check available to this project: those files carry the unRAR
+restriction (see `IMPLEMENTATION_GAPS.md`).
 
 ## 18. Fuzzing and negative tests
 
@@ -567,6 +569,7 @@ regression test.
 - **NIST SP 800-38A** — AES-CBC test vectors.
 - **RFC 6070** — PBKDF2 test vectors.
 - **blake2.net** — BLAKE2sp reference vectors.
-- **`_refs/7zip`** — independent encoders for PPMd/LzFind/Huffman;
-  useful for second-opinion ratio checks.
+- **`_refs/7zip`** — public-domain PPMd/LzFind/Huffman encoders, unrelated
+  to RAR; useful for second-opinion ratio checks. Its `Compress/Rar*`
+  decoders carry the unRAR restriction and are not usable here.
 - **`_refs/XADMaster`** — alternate RAR 1.3/1.5/2.0/3.0 decoders.

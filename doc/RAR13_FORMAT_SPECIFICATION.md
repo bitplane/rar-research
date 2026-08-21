@@ -882,10 +882,9 @@ goes. Any encoder must therefore maintain a **bit-exact shadow** of the
 decoder's state and produce bits that, when fed through Sections 6.3–6.15,
 reproduce the intended literals and matches. This section describes how.
 
-Primary reference: `_refs/7zip/CPP/7zip/Compress/Rar1Decoder.cpp` (the cleanest
-implementation of the decoder side — note its license warning: the 7-Zip file
-is GPL-derived from historical decompressor code and cannot be used to build a RAR **encoder**
-verbatim, only as a format reference).
+The decoder this has to shadow is the one specified in §6.3–6.15 above.
+Nothing else is needed: those sections are what an encoder mirrors, and
+the oracle for whether it mirrored them correctly is §6.16.9.
 
 #### 6.16.1 General strategy
 
@@ -1131,10 +1130,21 @@ There is no explicit block structure in RAR 1.3/1.5. The encoder:
 #### 6.16.9 Test oracle
 
 The encoder is correct iff, for every test input, the bytes it produces
-decompress back to the original input via a RAR 1.5-compatible decoder. Cross-
-check against `_refs/7zip/CPP/7zip/Compress/Rar1Decoder.cpp` for the
-bit-exact state machine. Compare compressed sizes against `rar a -m5 -mt1 -ma1.5`
-(if any vintage RAR build is available) to gauge parser quality.
+decompress back to the original input via a RAR 1.5-compatible decoder.
+Run the output through more than one: RAR 7.12 and UnRAR 7.20 both still
+read `UnpVer` 13 and 15, and they agree with each other, so a
+disagreement is your bug rather than theirs.
+
+Round-trip is the whole test, and it is a strong one. The adaptive
+Huffman state has to match bit for bit, so any drift between your shadow
+of the decoder and the real one desynchronises the stream and shows up as
+wrong bytes rather than as a near miss.
+
+For the reverse direction, the archives under
+`fixtures/1.402/` and the RAR 1.5 fixtures in the rars tree are vintage
+output to decode. Compare compressed sizes against `rar a -m5 -mt1 -ma1.5`
+if a vintage build is available, to gauge parser quality rather than
+correctness.
 
 #### 6.16.10 Implementation cost and recommendation
 
