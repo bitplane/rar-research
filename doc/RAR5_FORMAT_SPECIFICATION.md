@@ -345,6 +345,19 @@ Stores archive original name and creation time.
 | Name        | (Name Length) bytes | UTF-8 archive name. No trailing zero (but may have padding zeros from over-provisioning; truncate at first zero). If first byte is zero, no name stored. Present if `0x0001`. |
 | Time        | 4 or 8 bytes  | Creation time. FILETIME (8 bytes) if `0x0004` is 0. Unix seconds (4 bytes) if `0x0004` is 1 and `0x0008` is 0. Unix nanoseconds (8 bytes) if both `0x0004` and `0x0008` are 1. Present if `0x0002`. |
 
+The 8-byte nanosecond form here is a **single absolute count** of
+nanoseconds since 1970-01-01 UTC. It is not the split representation
+that `FHEXTRA_HTIME` uses for file timestamps, where the seconds and the
+sub-second remainder are two separate `uint32` fields (§8). The two
+records are easy to conflate; they do not share an encoding.
+
+Both flag combinations occur in the wild, and which one you get depends
+on the host. Measured on `rar a -ams`: the Linux build writes flags
+`0x0F`, name plus creation time plus Unix plus nanoseconds, and an
+8-byte count that reads back as the current time. The WinRAR 7.21 build
+that produced `rar50/ams_archive_name_rar721.rar` in the rars tree wrote
+flags `0x03`, which is the Windows FILETIME form. A reader needs both.
+
 ---
 
 ## 8. File Header and Service Header
@@ -705,8 +718,9 @@ and write one.
 | `0x0010` | Nanosecond precision (Unix time only — flag `0x0001` must also be set). |
 
 **Width per timestamp.** Nanosecond precision does not widen the timestamp to a
-64-bit nanosecond count. The seconds stay a `uint32` and a second `uint32`
-carries the remainder:
+64-bit nanosecond count. That is what `MHEXTRA_METADATA` does for the archive
+creation time (§7), and this record does not follow it. Here the seconds stay a
+`uint32` and a second `uint32` carries the remainder:
 
 | `0x0001` (Unix) | `0x0010` (Nanos) | Per-timestamp encoding |
 |:---:|:---:|:---|
