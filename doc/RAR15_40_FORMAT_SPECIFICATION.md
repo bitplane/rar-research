@@ -446,6 +446,31 @@ Encoded in bits 5, 6, and 7 of HEAD_FLAGS (`(HEAD_FLAGS >> 5) & 0x07`):
 | 3     | Unix |
 | 4     | Mac OS |
 | 5     | BeOS |
+| 6     | WinCE (Windows CE) |
+
+Values 0 through 6 are assigned; 7 and above are not. Measured on RAR
+7.12, which prints `Host OS: WinCE` for 6 and prints nothing at all for
+7 or 9.
+
+**WinCE is not treated as a Windows attribute source, though.** Despite
+the name, extraction gives a `HOST_OS` of 6 the same handling as an
+unrecognised value: the `FILE_ATTRIBUTE_READONLY` bit is ignored and the
+default mode applies. Measured on Linux at umask 022, extracting the same
+file with only `HOST_OS` and `ATTR` changed:
+
+| `HOST_OS` | `ATTR` | Extracted mode |
+|---|---|---|
+| 0 (MS-DOS) | `0x20` | 644 |
+| 0 (MS-DOS) | `0x21` read-only | **444** |
+| 2 (Windows) | `0x20` | 644 |
+| 2 (Windows) | `0x21` read-only | **444** |
+| 6 (WinCE) | `0x20` | 644 |
+| 6 (WinCE) | `0x21` read-only | 644 |
+| 9 (unassigned) | `0x21` read-only | 644 |
+
+So 6 belongs in the table for listing purposes, and an encoder should not
+expect a reader to honour Windows attribute bits alongside it. See
+`RAR5_FORMAT_SPECIFICATION.md` §8 for the full conversion matrix.
 
 ### Compression Methods
 
