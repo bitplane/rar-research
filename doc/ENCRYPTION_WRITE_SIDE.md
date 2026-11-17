@@ -588,14 +588,22 @@ prep eliminates half of them.
 
 ### 5.2 Encoder write recipe
 
-```
-def encrypt_file_rar50(password_utf8, plaintext):
-    salt = os.urandom(16)
-    iv   = os.urandom(16)
-    lg2_count = 15           # typical; encoder choice
+RAR draws **one salt per archive** and a fresh IV per encrypted member, so the
+PBKDF2 chain runs once per password, not once per file (see §5.6 and §8 for
+what WinRAR writes). The salt and derived values below are computed once and
+shared by every member encrypted with the same password; only the IV is drawn
+per member.
 
-    key_32, hash_key, psw_check_32 = pbkdf2(
-        password_utf8, salt, count = 1 << lg2_count)
+```
+# Once per archive and password:
+archive_salt = os.urandom(16)
+lg2_count = 15               # typical; encoder choice
+key_32, hash_key, psw_check_32 = pbkdf2(
+    password_utf8, archive_salt, count = 1 << lg2_count)
+
+def encrypt_file_rar50(plaintext):
+    salt = archive_salt      # the same salt in every member's record
+    iv   = os.urandom(16)    # fresh for every member
 
     # Password check value is the XOR fold of psw_check_32 into 8 bytes:
     psw_check_8 = bytes(
@@ -711,18 +719,26 @@ encrypting content.
 ### 5.5 Trap: KDF cache correctness
 
 KDF outputs may be cached, but the cache key **must** include all three of
-password, salt, and lg2_count. An encoder that caches on password alone will
+password, salt, and lg2_count. A reader that caches on password alone will
 produce correct-looking output for the first file and silently wrong output for
-any file whose salt differs. Since salts are per-file, a
-naive cache is worse than no cache.
+any file whose salt differs: archives from other encoders can give each member
+its own salt. In RAR's own archives every member shares the archive's salt
+(§5.6), so a correct cache hits on every member after the first. An encoder
+that always uses one salt and one lg2_count per archive can key its own cache
+on the password alone.
 
 ### 5.6 Security
 
 AES-256-CBC + PBKDF2-HMAC-SHA256 with 32K+ iterations is well-studied and
-sound against known attacks. The per-file salt and IV give forward secrecy
-between files. The password check value is XOR-folded, which destroys
-enough information that a brute-force attacker still needs to run the
-full PBKDF2 chain per candidate password — the check value is not a
+sound against known attacks. The salt is per **archive**, not per file: RAR
+writes one random salt and uses it in every member's encryption record, so
+all members encrypted with one password share one key. What keeps them apart
+is the IV, which is fresh for every member, so equal plaintexts in two members
+do not give equal ciphertexts. There is no forward secrecy between files, and
+a per-file salt would not add any: anyone with the password can derive every
+member's key either way. The password check value is XOR-folded, which
+destroys enough information that a brute-force attacker still needs to run
+the full PBKDF2 chain per candidate password — the check value is not a
 shortcut.
 
 **Iteration-count limits.** The on-disk `lg2_count` byte is constrained:
@@ -747,19 +763,13 @@ shortcut.
 - Optionally reject `lg2_count < 10` (1024 iterations) as evidence of a
   hostile or broken encoder; standard archives are always >= 15.
 
-AES-256-CBC + PBKDF2-HMAC-SHA256 with 32K+ iterations is well-studied and
-sound against known attacks. The per-file salt and IV give forward secrecy
-between files. The password check value is XOR-folded, which destroys
-enough information that a brute-force attacker still needs to run the
-full PBKDF2 chain per candidate password — the check value is not a
-shortcut.
-
 ---
 
 ## 6. Archive-wide header encryption (HEAD_CRYPT)
 
-The sections above cover **per-file** encryption — each file record carries its
-own salt/IV and the rest of the archive (main header, file headers, service
+The sections above cover **per-file** encryption — each file record carries a
+salt and IV (in RAR 5, the archive's shared salt and the member's own IV) and
+the rest of the archive (main header, file headers, service
 headers) is written in the clear. RAR also supports **archive-wide** header
 encryption, where every block after the marker is encrypted and the entire
 archive structure is opaque to anyone without the password. This is the
@@ -799,8 +809,10 @@ and per-file data encryption are orthogonal; `-hp` typically implies both
 
 The HEAD_CRYPT block itself is identical to a per-file encryption extra record
 in layout (§5.2) but written as a top-level block with `HeaderType = 4`. The
-Salt field in HEAD_CRYPT is the **archive-wide** salt; it is not reused in any
-per-file encryption record.
+Salt field in HEAD_CRYPT is the **archive-wide** salt, and RAR reuses it: every
+member's encryption record carries the same salt, and every volume of a set
+repeats the same HEAD_CRYPT salt. One PBKDF2 derivation therefore serves the
+headers and the file data alike.
 
 ### 6.2 RAR 5.0 encoder recipe
 
@@ -1041,21 +1053,34 @@ sizes and PBKDF2 chain lengths.
 
 ## 8. WinRAR parity item: IV/salt generation policy across solid archives
 
-The encoder must generate fresh random salt and IV for each encrypted
-record. The question that is **not** answered by any of our reference
-sources is whether and how the WinRAR encoder reuses or derives IVs
-across files in a solid encrypted archive — specifically, does a solid
-archive use one IV for the entire compressed stream, or one per file? This
-is tracked as a WinRAR parity-only item in `IMPLEMENTATION_GAPS.md` because it
-affects byte-identical compatibility with the official `rar` binary.
+For RAR 5, the salt and IV policy of non-solid archives has been measured. Salt
+and IV were read from each encryption record of archives made with
+`rar a -ma5` from RAR 7.30 beta 2:
 
-For a clean-room encoder: generate a fresh 16-byte random IV **per
-encrypted region**, and a fresh 16-byte random salt **per file header**.
-This is always safe regardless of the official encoder's behavior — it's
-equivalent to or stronger than any solid-mode IV sharing scheme. The only
-potential downside is that an archive opened with the clean-room encoder
-won't be bit-identical to one produced by WinRAR from the same input, but
-both archives will decrypt correctly with either decoder.
+| Switches | Salt | IV |
+|---|---|---|
+| `-p` | one salt for every member | a fresh IV for each member |
+| `-hp` | the `HEAD_CRYPT` salt is also every member's salt | a fresh IV for each member |
+| `-p -v5k` | one salt in every volume | a fresh IV for each member; a split member repeats its IV in every part, since the parts form one cipher stream |
+| `-hp -v5k` | the `HEAD_CRYPT` salt is the same in every volume and matches every member's salt | as above |
+
+WinRAR-made fixtures show the same: `encrypted_members_multivol`,
+`header_encrypted*` and `winrar721_header_encrypted_quickopen` in the rars
+test fixtures. Found while fixing a rars writer that derived a fresh salt,
+and ran PBKDF2, for every member
+([bitplane/rars#297](https://github.com/bitplane/rars/pull/297)).
+
+For a clean-room RAR 5 encoder, then: one 16-byte random salt per archive and
+password, shared by `HEAD_CRYPT` and every member, and a fresh 16-byte random
+IV per encrypted region. A fresh salt per member also decrypts correctly, but
+costs one PBKDF2 derivation per member and matches nothing RAR writes. RAR 3.x
+is different, because it has no IV: there the salt is the only per-file random
+value, and §4.7's fresh salt per file still applies.
+
+Still open: whether a **solid** encrypted archive uses one IV for its whole
+compressed stream or one per file. This is tracked as a WinRAR parity-only item
+in `IMPLEMENTATION_GAPS.md` because it affects byte-identical compatibility
+with the official `rar` binary.
 
 ---
 

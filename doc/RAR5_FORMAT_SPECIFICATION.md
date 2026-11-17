@@ -737,7 +737,7 @@ nonsensical archive: services are not extracted as filesystem links.
 | Version      | vint     | 0 = AES-256. |
 | Flags        | vint     | `0x0001`: password check data present. `0x0002`: `HashMAC` / tweaked checksums (CRC32 and BLAKE2sp fields are stored as key-dependent MACs). |
 | KDF Count    | 1 byte   | Binary log of PBKDF2 iterations. |
-| Salt         | 16 bytes | Per-file salt. |
+| Salt         | 16 bytes | Salt for this member's key. RAR writes the archive's one salt in every member, the same as `HEAD_CRYPT`'s when headers are encrypted; see `ENCRYPTION_WRITE_SIDE.md` §8. |
 | IV           | 16 bytes | AES-256 initialization vector. |
 | Check Value  | 12 bytes | Password verification (if flag `0x0001`). Same format as archive encryption header. |
 

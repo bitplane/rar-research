@@ -247,10 +247,10 @@ files, with WinRAR's exact choice noted as "implementation-defined."
   extension / by mtime). The clean-room default is encoder choice; a
   stable default that affects compression ratio should be chosen and
   documented in `ARCHIVE_LEVEL_WRITE_SIDE.md`.
-- **IV/salt generation policy across solid archives** — whether WinRAR
-  reuses or regenerates IV/salt per solid group or per file.
-  `ENCRYPTION_WRITE_SIDE.md §7` recommends fresh-per-record for
-  clean-room output.
+- **IV policy across solid archives** — whether WinRAR uses one IV for a
+  solid encrypted stream or one per file. The salt policy, and the IV policy
+  of non-solid archives and volume sets, are measured in
+  `ENCRYPTION_WRITE_SIDE.md §8`: one salt per archive, a fresh IV per member.
 - **RAR 2.x multimedia audio channel-count selection** — how WinRAR picks
   audio blocks at all, then `Channels = 1..4`, for a multimedia block. Decoder
   behaviour and the safe exhaustive-search encoder default are documented in
