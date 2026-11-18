@@ -516,18 +516,41 @@ decrypts each fragment independently desynchronises at the first unaligned
 cut, which is easy to mistake for a format rule that fragments must be
 aligned.
 
-### 4.7 Trap: salt reuse across headers
+### 4.7 Salt sharing across members
 
-Each encrypted file member carries its own 8-byte salt. The encoder
-**must** generate a fresh random salt for every independent file member, and
-must **not** reuse the same salt across multiple files — salt reuse lets an
-attacker detect common prefixes, *and* the §4.5 KDF cache means a re-used salt
-yields a cache hit on the receiver: identical salt across files implies
-identical `(AESKey, AESInit)`, which is catastrophic. Split fragments of the
-same logical file are the exception: they repeat the member salt because they
-are continuations of one encrypted packed stream. Always generate fresh salt
-per logical file; the read-side cache becomes harmless when no two independent
-files share salt.
+Each encrypted file member's header has room for its own 8-byte salt, but RAR
+does not draw one per member. It derives one data key per password and writes
+the same salt in every member encrypted with it. WinRAR-made fixtures in the
+rars test suite show this:
+
+| Fixture | What RAR wrote |
+|---|---|
+| `encrypted/rar4_encrypted_files_and_dirs.rar` (RAR 3.93, `-r -m3 -ptest`) | 3 encrypted members, 1 salt |
+| `encrypted/rar4_mixed_visible_names_password.rar` (WinRAR 4.20) | 2 encrypted members, 1 salt |
+
+Split fragments of one member repeat its salt too, since they continue one
+encrypted packed stream (§4.6).
+
+This has a cost, which RAR accepts. RAR 3 derives the IV from the
+salt as well as the key (§4.2), so members that share a salt share
+`(AESKey, AESInit)`. CBC from the same key and IV turns equal plaintext
+prefixes into equal ciphertext prefixes, so an observer can tell when two
+encrypted members' packed streams start the same. RAR 5 avoids this with a
+fresh IV per member under one archive salt (§8); RAR 3 has no IV field to do
+that with.
+
+An encoder can choose either:
+
+- **One salt per password, as RAR writes.** One 262144-round derivation per
+  password, however many members, and output that matches RAR's.
+- **A fresh salt per member.** It decrypts the same way and leaks no shared
+  prefixes, but costs one derivation per member, about 10 ms each (§4.5), and
+  matches nothing RAR writes.
+
+A reader must handle both: other encoders and older rars versions wrote a
+salt per member. Found while fixing a rars writer that derived a fresh salt
+for every RAR 3 member and every encrypted header block
+([bitplane/rars#308](https://github.com/bitplane/rars/pull/308)).
 
 Security: AES-128-CBC with a strong KDF is cryptographically sound. The
 262144-iteration SHA-1 chain (with the `_rar29` quirk) is weaker than
@@ -916,17 +939,16 @@ block headers **after** the main header are encrypted.
 
 Encoder subtleties:
 
-- **Re-key per block vs. reuse.** The decoder calls `SetCryptKeys` with each
-  block's 8-byte salt, which re-runs the 262144-iteration
-  SHA-1 KDF every time. This is catastrophically slow unless the encoder
-  writes the **same salt for every block** — then the `KDF3Cache` hits and
-  the KDF runs exactly once per archive. **An encoder targeting RAR 3.x
-  header encryption should reuse a single archive-wide salt across every
-  encrypted header.** This is the opposite of per-file encryption (§4
-  "Trap: salt reuse across headers"), where fresh salt is a **security**
-  requirement — but archive-header encryption uses the archive salt only
-  as a key-derivation input, and per-block freshness buys nothing because
-  an attacker who can see one header can see them all.
+- **One header salt per write.** The decoder calls `SetCryptKeys` with each
+  block's 8-byte salt, which re-runs the 262144-iteration SHA-1 KDF unless
+  the salt matches one it has already derived. RAR derives one header key
+  per write: in RAR 3.00 `-hp` volume sets
+  (`rar300/header_encrypted_multivol_rar300.{rar,r00}` and
+  `rar300/header_encrypted_newnaming_rar300.part0{1,2}.rar` in the rars
+  fixtures), every volume's first encrypted header block carries the same
+  salt, and it differs from the members' shared data salt (§4.7). An encoder
+  should do the same: one header salt for every encrypted header, so the
+  KDF runs once for headers and once per data password.
 - **Implicit zero IV.** Each block resets CBC state (no IV field on disk),
   so any header modification flips at most `ceil(HeadSize/16)` ciphertext
   blocks in that header — same tamper-locality as RAR 5.0's explicit IV.
@@ -936,10 +958,9 @@ Encoder subtleties:
 - **Comment and service headers.** `HEAD3_CMT`, `HEAD3_SERVICE`, and any
   other non-MAIN blocks are all encrypted under this scheme.
 
-Recommendation: if the target is bit-for-bit interop with WinRAR's `-hp`
-output, inspect a sample archive to confirm whether WinRAR uses one salt or
-many. For a clean-room encoder, one-salt-per-archive is both correct and
-much faster.
+Recommendation: one header salt per write, separate from the data salt, as
+RAR writes. A salt per header block also decrypts, but costs a derivation per
+block.
 
 #### 6.4.1 Password check for RAR 3.x/4.x (no explicit check field)
 
@@ -1074,8 +1095,8 @@ For a clean-room RAR 5 encoder, then: one 16-byte random salt per archive and
 password, shared by `HEAD_CRYPT` and every member, and a fresh 16-byte random
 IV per encrypted region. A fresh salt per member also decrypts correctly, but
 costs one PBKDF2 derivation per member and matches nothing RAR writes. RAR 3.x
-is different, because it has no IV: there the salt is the only per-file random
-value, and §4.7's fresh salt per file still applies.
+shares its salt the same way (§4.7, §6.4), but has no IV, so there members
+that share a salt share their key and IV as well.
 
 Still open: whether a **solid** encrypted archive uses one IV for its whole
 compressed stream or one per file. This is tracked as a WinRAR parity-only item
