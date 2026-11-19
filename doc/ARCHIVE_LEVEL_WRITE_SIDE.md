@@ -13,7 +13,7 @@ handle beyond the LZ/Huffman/filter/encryption/integrity primitives:
    encoding
 
 References:
-- a public RAR reader — `UnpInitData` reset rules (lines 206–240)
+- a public RAR reader — per-file decoder state reset rules
 - a public RAR reader — `NextVolumeName` naming conventions
 - a public RAR reader — header framing
 - a public RAR reader — Quick Open cache structure
@@ -135,9 +135,8 @@ boundaries. The encoder sequences:
    (with `EARC_NEXT_VOLUME`), start the next volume with `MARK_HEAD`
    + `MAIN_HEAD` + continuation file header (`FHD_SPLIT_BEFORE`).
 4. LZ state, Huffman tables, and the solid-group-level model state
-   persist across the volume boundary (§2.5); the decoder's
-   `UnpInitData(Solid=true)` call treats volume boundaries the same
-   as file boundaries for state purposes.
+   persist across the volume boundary (§2.5); for decoder state, a
+   volume boundary behaves like a solid file boundary.
 5. Filters reset at every file boundary regardless of volume (§1.1).
 
 An encoder that volume-splits **within** a single file (any split
@@ -151,11 +150,10 @@ because the file's data stream simply continues in the next volume.
 
 ### 1.1 What carries over and what resets
 
-The canonical description is the unpacker's per-file state reset at
-a public RAR reader, the entry point shared by **Unpack50
-(RAR 5.0) and Unpack70 (RAR 7.0)** — they both dispatch through the same
-init. Reading the unconditional vs the `if (!Solid)` branches produces
-this table:
+Each file entering the decoder starts with a per-file state reset,
+shared by **Unpack50 (RAR 5.0) and Unpack70 (RAR 7.0)**. Some state is
+reset for every file; the rest is reset only for a non-solid file and
+carries across a solid boundary:
 
 | State element | Resets on non-solid | Carries over in solid | Notes |
 |---|:---:|:---:|---|
@@ -209,8 +207,8 @@ decoder discards it before starting file N+1. The encoder should
 therefore never emit a filter whose region spans a file boundary — the
 filter block must live entirely within a single file's LZ stream.
 
-**Unpack50 vs Unpack70.** The two codecs share `UnpInitData` verbatim and
-operate on the same state fields. The only differences are the Distance
+**Unpack50 vs Unpack70.** The two codecs reset and carry exactly the same
+state at a file boundary. The only differences are the Distance
 table size (64 → 80 symbols) and the dictionary encoding (fraction bits
 active), both of which are per-file, not per-solid-group. Solid grouping
 across a v0/v1 boundary therefore carries the LZ state cleanly, provided
@@ -229,10 +227,9 @@ across solid files; only filters reset. The state fields map differently:
 | Unpack20 | Huffman tables (`MD`, `LD`, `DD`, `RD`, `BD`); window; `LastDist`/`LastLength`; audio filter state `AudioV` |
 | Unpack29 | All Unpack20 state; PPMd model (`ModelOrder`, SubAlloc, `FoundExcaped`); RARVM filter list; v29-specific `UnpBlockType` (LZ / PPM) |
 
-A RAR 2.x/3.x/4.x encoder must match the source code in the matching
-`unpackNN.cpp` file; the RAR 5.0 state list above is **not** a substitute.
-Filter reset-per-file is the one rule that holds across every codec
-generation.
+A RAR 2.x/3.x/4.x encoder must follow the table above for its own codec;
+the RAR 5.0 state list is **not** a substitute. Filter reset-per-file is
+the one rule that holds across every codec generation.
 
 ### 1.2 Encoder rule: emit in file order, never reset mid-stream
 
@@ -247,7 +244,7 @@ for each file in the solid group, in emission order:
     before emitting any filter that straddles the boundary, split it
     into two filters — one per file
     after emitting the file's last byte:
-        InitFilters()      # match decoder's filter reset
+        clear pending filters   # the decoder drops them here too
 ```
 
 The first file in a solid group must have `solid_flag = false` in its
@@ -617,9 +614,9 @@ writes it into volume N until the size limit, closes that volume with a
 split-tagged end-of-archive marker, opens volume N+1, emits marker +
 main header + file header + continuation flags, then keeps writing
 bytes. The same rules apply to every codec generation (Unpack15 through
-Unpack70): the decoder's UnpInitData is **not** called at a volume
-boundary, only at a new file entering the codec without a continuation
-flag.
+Unpack70): the decoder's per-file state reset does **not** happen at a
+volume boundary, only when a new file enters the codec without a
+continuation flag.
 
 When splitting a file across volumes N and N+1:
 

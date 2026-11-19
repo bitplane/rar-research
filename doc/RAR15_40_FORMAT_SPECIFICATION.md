@@ -2296,6 +2296,32 @@ Level decoder symbols:
 | 17     | Set to zero. Count = `3 + read_bits(3)` (3-10 times). |
 | 18     | Set to zero. Count = `11 + read_bits(7)` (11-138 times). |
 
+**A block replaces only the lengths it decodes.** `OldTable` holds
+`MC20 * 4` = 1028 entries, enough for four audio channels. A block
+decodes its `TableSize` lengths into entries `0..TableSize`, each delta
+added to the entry already there, and leaves every entry from
+`TableSize` on as it was. Clearing the table happens only when
+`KeepTables` is clear (§16.3), never as a side effect of a shorter
+table.
+
+This decides blocks that switch kind with `KeepTables` set. An LZ block
+(374 lengths) between two audio blocks keeps the audio lengths at
+374..1027, and the next audio block's deltas for channels 1-3 apply to
+those, not to zeros. A decoder that rebuilds the whole 1028-entry table
+from each block decodes that next audio block with broken tables
+(typically an invalid or empty Huffman code).
+
+Observed: RAR 2.50 writes such members when a file's blocks alternate
+between audio and LZ (`rar20-block-switches.rar` from the ClamCove RAR
+evaluation, one 12,000-byte member, blocks LZ fresh, audio 2-channel
+kept, LZ kept, audio 4-channel kept). RAR 7.12 and unrar 7.20 extract it
+with a matching CRC under this rule; RAR 3.93 reports a CRC failure on
+the same archive.
+
+A repeat or zero run that ends past `TableSize` is not exercised by any
+known archive. rars keeps the entries such a run writes, clamped to the
+table.
+
 For normal blocks, the decoded lengths are split into three tables:
 
 | Table | Offset | Size | Purpose |
@@ -2724,12 +2750,12 @@ Reset rules:
 
 | State | Reset on non-solid file open | Carries on solid file open | Carries across audio blocks within a file |
 |---|---|---|---|
-| `AudV[0..3]` (per-channel state) | yes — `memset(AudV, 0, sizeof(AudV))` | yes | **yes** — never reset between blocks |
+| `AudV[0..3]` (per-channel state) | yes — every field of every channel zeroed | yes | **yes** — never reset between blocks |
 | `UnpChannelDelta` | yes — set to `0` | yes | yes (continuous across block boundaries) |
 | `UnpCurChannel` | yes — set to `0` | yes | mostly yes; reset to `0` only when the cursor would fall outside the new block's `Channels`, i.e. `cur >= channels` |
 | `UnpChannels` | yes — set to `1` | yes | re-read from each audio block header (§16.3) |
 | `UnpAudioBlock` | yes — set to `false` | yes | re-read from each block header |
-| `UnpOldTable20[]` (Huffman tables) | yes — zeroed | yes | re-read or kept per the table-control bit |
+| `UnpOldTable20[]` (Huffman tables) | yes — zeroed | yes | re-read or kept per the table-control bit; a block replaces only its first `TableSize` entries (§16.4) |
 
 Each channel (up to 4) maintains independent prediction state:
 
